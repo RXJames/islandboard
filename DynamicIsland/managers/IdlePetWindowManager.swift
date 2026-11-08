@@ -112,6 +112,8 @@ final class IdlePetWindowManager: NSObject, ObservableObject, NSWindowDelegate {
         var scale: CGFloat
         /// Notch face in screen coordinates; nil disables the pet.
         var notchRect: CGRect?
+        /// Notch panel currently expanded; the pet steps out of the way.
+        var notchOpen = false
     }
 
     private enum Mode {
@@ -131,6 +133,8 @@ final class IdlePetWindowManager: NSObject, ObservableObject, NSWindowDelegate {
     private var reappearWork: DispatchWorkItem?
     private var settleWork: DispatchWorkItem?
     private var running = false
+    private var screenLocked = false
+    private var lockObservers: [NSObjectProtocol] = []
     private var dir: CGFloat = 1
     private var x: CGFloat = 0
     private var standing = false
@@ -199,6 +203,17 @@ final class IdlePetWindowManager: NSObject, ObservableObject, NSWindowDelegate {
                 Task { @MainActor in self?.tick() }
             }
         }
+        // The pet rides in the notch's max-level SkyLight space, so it must
+        // not linger over the login window while the screen is locked.
+        if lockObservers.isEmpty {
+            let center = DistributedNotificationCenter.default()
+            lockObservers.append(center.addObserver(forName: .init("com.apple.screenIsLocked"), object: nil, queue: .main) { [weak self] _ in
+                Task { @MainActor in self?.screenLocked = true }
+            })
+            lockObservers.append(center.addObserver(forName: .init("com.apple.screenIsUnlocked"), object: nil, queue: .main) { [weak self] _ in
+                Task { @MainActor in self?.screenLocked = false }
+            })
+        }
     }
 
     // MARK: Window
@@ -214,15 +229,35 @@ final class IdlePetWindowManager: NSObject, ObservableObject, NSWindowDelegate {
         panel.isOpaque = false
         panel.backgroundColor = .clear
         panel.hasShadow = false
-        panel.level = .statusBar
+        // One level above the notch window: the pet walks in FRONT of the
+        // notch - out of the face and back - exactly like it lives there.
+        if let notch = NSApp.windows.first(where: { $0 is DynamicIslandWindow }) {
+            panel.level = NSWindow.Level(rawValue: notch.level.rawValue + 1)
+        } else {
+            panel.level = .statusBar
+        }
         panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle, .fullScreenAuxiliary]
         panel.isMovableByWindowBackground = true
         panel.delegate = self
         panel.contentView = hosting
         window = panel
         host = hosting
+        // The notch window is lifted into SkyLight's max-level space, which
+        // no ordinary window level can beat; ride in the same space so the
+        // pet can genuinely walk over the notch face.
+        joinNotchSpace()
         // Parked off-screen until an intro finishes.
         panel.setFrame(NSRect(x: -2000, y: -2000, width: size, height: size), display: false)
+    }
+
+    /// Re-attach the pet window after the app reassigns the notch space
+    /// membership (`notchSpace.windows = currentDynamicIslandWindows()` on
+    /// layout refreshes drops anything not in that set). Set insert on an
+    /// already-member window mutates nothing, so only actual drops fire the
+    /// SkyLight call; guard with `contains` to keep ticks write-free.
+    private func joinNotchSpace() {
+        guard let window, !NotchSpaceManager.shared.notchSpace.windows.contains(window) else { return }
+        NotchSpaceManager.shared.notchSpace.windows.insert(window)
     }
 
     private var petSize: CGFloat {
@@ -292,12 +327,23 @@ final class IdlePetWindowManager: NSObject, ObservableObject, NSWindowDelegate {
 
     private func beginWalk() {
         introWork = nil
-        guard let segment = currentSegment(), let notch = inputs.notchRect else { return }
+        guard running, mode == .patrolling, let segment = currentSegment(), let notch = inputs.notchRect else { return }
+        if screenLocked || inputs.notchOpen {
+            // Intro finished while the screen is locked or the notch is
+            // expanded; revisit shortly instead of walking onto them.
+            let work = DispatchWorkItem { [weak self] in
+                Task { @MainActor in self?.beginWalk() }
+            }
+            reappearWork?.cancel()
+            reappearWork = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1, execute: work)
+            return
+        }
         petShownInNotchFace = false
-        // Start under the face pet's exact slot (right edge of the notch,
-        // 10 pt inset). The window sits below the notch window in level,
-        // so the pet is occluded by the notch until it has physically
-        // walked past the pill edge - it emerges from behind, never pops.
+        // Start at the face pet's exact slot (right edge of the notch,
+        // 10 pt inset) in the same front layer, so the hand-off from the
+        // in-notch view to the walking window is invisible: same spot,
+        // same size, same animation, and it keeps walking outward.
         x = notch.maxX - 10 - petSize
         // Head towards the patrol band even when it is on the far side.
         dir = x < segment.lowerBound ? 1 : -1
@@ -305,6 +351,7 @@ final class IdlePetWindowManager: NSObject, ObservableObject, NSWindowDelegate {
         actionEnd = Date().addingTimeInterval(Double.random(in: Self.strollRange))
         setFacing()
         placeWindow()
+        joinNotchSpace()
         window?.orderFrontRegardless()
     }
 
@@ -327,8 +374,16 @@ final class IdlePetWindowManager: NSObject, ObservableObject, NSWindowDelegate {
     /// Lottie keeps playing in place, which is exactly the idle animation
     /// the pet shows inside the notch, so walking and resting blend.
     private func tick() {
-        guard running, mode == .patrolling, !dragging, introWork == nil,
-              window?.isVisible == true, let segment = currentSegment() else { return }
+        guard running, mode == .patrolling, !dragging, introWork == nil else { return }
+        // An expanded notch owns the menu-bar area; the pet waits it out
+        // without teleporting. Same while the screen is locked.
+        if inputs.notchOpen || screenLocked {
+            if window?.isVisible == true { window?.orderOut(nil) }
+            return
+        }
+        if window?.isVisible == false { window?.orderFrontRegardless() }
+        joinNotchSpace()  // cheap: only acts if a layout refresh dropped us
+        guard let segment = currentSegment() else { return }
         let now = Date()
         if now >= actionEnd {
             standing.toggle()

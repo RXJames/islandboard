@@ -1030,6 +1030,9 @@ struct ContentView: View {
             .onChange(of: selectedIdleAnimation) { _, _ in
                 syncIdlePet()
             }
+            .onChange(of: vm.notchState) { _, _ in
+                syncIdlePet()
+            }
             .onAppear {
                 syncIdlePet()
             }
@@ -1412,7 +1415,8 @@ struct ContentView: View {
         idlePet.sync(.init(enabled: idlePetWalking,
                            hasAnimation: selectedIdleAnimation != nil,
                            scale: idlePetSizeScale,
-                           notchRect: notchRect))
+                           notchRect: notchRect,
+                           notchOpen: vm.notchState == .open))
     }
 
     @ViewBuilder
