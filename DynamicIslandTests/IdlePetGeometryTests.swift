@@ -50,6 +50,17 @@ final class IdlePetGeometryTests: XCTestCase {
         XCTAssertEqual(IdlePetGeometry.faceSide(notchWidth: 200, notchHeight: -5, scale: 1), 0)
     }
 
+    // MARK: loopDuration
+
+    func testLoopDurationParsesLottieHeader() throws {
+        let json = #"{"fr":30,"ip":0,"op":90,"v":"5.7.4"}"#.data(using: .utf8)!
+        XCTAssertEqual(IdlePetGeometry.loopDuration(lottieData: json, speed: 1), 3, accuracy: 0.0001)
+        XCTAssertEqual(IdlePetGeometry.loopDuration(lottieData: json, speed: 2), 1.5, accuracy: 0.0001)
+        // Garbage or missing data must fall back, never trap.
+        XCTAssertEqual(IdlePetGeometry.loopDuration(lottieData: nil, speed: 1), 3)
+        XCTAssertEqual(IdlePetGeometry.loopDuration(lottieData: Data("garbage".utf8), speed: 1), 3)
+    }
+
     // MARK: patrolSegment
 
     func testPatrolSegmentKeepsClearOfNotchOnTheRight() {

@@ -1431,15 +1431,12 @@ struct ContentView: View {
                 Rectangle()
                     .fill(.black)
                     .frame(width: max(0, vm.closedNotchSize.width - 20 - sideSize * 2))
-                // While walking, the pet lives in its own menu-bar window;
-                // it only redraws on the face while resting inside the notch.
-                if !idlePetWalking || idlePet.petShownInNotchFace {
-                    IdleAnimationView(fittingSize: CGSize(width: sideSize, height: sideSize))
-                        .frame(width: sideSize, height: sideSize)
-                } else {
-                    Color.clear
-                        .frame(width: sideSize, height: sideSize)
-                }
+                // The face pet stays mounted for the whole app lifetime so
+                // no Lottie view is ever destroyed mid-flight; walking just
+                // fades it out while the menu-bar window takes over.
+                IdleAnimationView(fittingSize: CGSize(width: sideSize, height: sideSize))
+                    .frame(width: sideSize, height: sideSize)
+                    .opacity(!idlePetWalking || idlePet.petShownInNotchFace ? 1 : 0)
             }
         }.frame(height: vm.effectiveClosedNotchHeight + (isHovering ? 8 : 0), alignment: .bottom)
     }
