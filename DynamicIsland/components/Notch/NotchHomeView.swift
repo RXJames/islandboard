@@ -952,6 +952,7 @@ struct NotchHomeView: View {
                     )
                 } else {
                     MinimalisticMusicPlayerView(albumArtNamespace: albumArtNamespace)
+                        .onHover { vm.isHoveringMusicBlock = $0 }
                 }
             } else if shouldShowSideLyrics {
                 sideLyricsContent
@@ -961,6 +962,7 @@ struct NotchHomeView: View {
                     if shouldShowMusicPlayer {
                         MusicPlayerView(albumArtNamespace: albumArtNamespace)
                             .frame(maxWidth: .infinity, alignment: .leading)
+                            .onHover { vm.isHoveringMusicBlock = $0 }
                     }
 
                     if showCalendar && showCalendarDeferred {
@@ -995,6 +997,7 @@ struct NotchHomeView: View {
             MusicPlayerView(albumArtNamespace: albumArtNamespace)
                 .frame(minWidth: SideLyricsLayout.minimumPlayerWidth, maxWidth: .infinity, alignment: .leading)
                 .layoutPriority(1)
+                .onHover { vm.isHoveringMusicBlock = $0 }
 
             LyricsSidePanelView()
                 .frame(width: max(0, lyricsPanelWidth), alignment: .topLeading)

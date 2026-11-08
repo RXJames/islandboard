@@ -44,6 +44,10 @@ class DynamicIslandViewModel: NSObject, ObservableObject {
     
     @Published var hideOnClosed: Bool = true
     @Published var isHoveringCalendar: Bool = false
+    /// Pointer is over the music player block of the home tab. Horizontal
+    /// swipes skip tracks only here; the rest of the home page belongs to
+    /// tab paging.
+    @Published var isHoveringMusicBlock: Bool = false
     @Published var isBatteryPopoverActive: Bool = false
     @Published var isClipboardPopoverActive: Bool = false
     @Published var isColorPickerPopoverActive: Bool = false
@@ -128,6 +132,7 @@ class DynamicIslandViewModel: NSObject, ObservableObject {
     /// instead of wedging the notch open.
     private func resetCloseVetoes() {
         isBatteryPopoverActive = false
+        isHoveringMusicBlock = false
         isClipboardPopoverActive = false
         isColorPickerPopoverActive = false
         isStatsPopoverActive = false

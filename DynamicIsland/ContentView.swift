@@ -842,6 +842,10 @@ struct ContentView: View {
                     )
                 }
                 syncStickyTerminalOutsideClickMonitor()
+                // The outgoing home view may be torn down while the pointer
+                // still sits on the music block; drop the stale hover flag so
+                // swipes elsewhere page tabs until real hover resumes.
+                vm.isHoveringMusicBlock = false
             }
             .sensoryFeedback(.alignment, trigger: haptics)
             .contextMenu {
@@ -2669,9 +2673,13 @@ struct ContentView: View {
         }
 
         // With the notch open, a two-finger horizontal swipe pages tabs —
-        // except the terminal tab, where the wheel belongs to the shell, and
-        // the home tab while a track is loaded (music skip wins there).
-        // Closed, horizontal swipe keeps skipping tracks.
+        // except on the terminal tab (the shell owns the wheel), over the
+        // calendar (the wheel picker consumes horizontal rotation), and
+        // wherever the home tab's music player sits under the pointer
+        // (music skip wins there). Closed, horizontal swipe skips tracks.
+        // Scroll suppression is deliberately NOT checked: notes/clipboard
+        // lists suppress the *vertical* close gesture by hover, which must
+        // not disable paging.
         if vm.notchState == .open,
            Defaults[.enableTrackpadTabSwipe],
            !TabBarInteractionState.shared.isReordering,
@@ -2679,7 +2687,6 @@ struct ContentView: View {
            !canPerformSkipGesture(),
            !hasAnyActivePopovers(),
            !vm.isHoveringCalendar,
-           !vm.isScrollGestureActive,
            !lockScreenManager.isLocked {
             if skipGestureActiveDirection == nil && translation > Defaults[.gestureSensitivity] {
                 skipGestureActiveDirection = direction
@@ -2734,7 +2741,9 @@ struct ContentView: View {
     }
 
     private func canPerformSkipGesture() -> Bool {
-        let canSkipInOpenHome = vm.notchState == .open && coordinator.currentView == .home
+        // Track skip needs the pointer over the music player block; the
+        // rest of the home page gives its horizontal swipes to tab paging.
+        let canSkipInOpenHome = vm.notchState == .open && coordinator.currentView == .home && vm.isHoveringMusicBlock
         let canSkipInClosedMusic = !Defaults[.openNotchOnHover] && isClosedMusicGestureContext
 
         return enableHorizontalMusicGestures
