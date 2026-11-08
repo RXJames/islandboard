@@ -19,7 +19,7 @@ struct CodexUsageProvider: UsageProvider {
         }
         let files = en.compactMap { $0 as? URL }.filter { $0.pathExtension == "jsonl" }
         guard !files.isEmpty else { throw UsageError.notFound("No Codex usage logs found") }
-        var snapshot = JSONLUsageParser.aggregate(files: files, now: now)
+        var snapshot = try UsageCore.aggregate(files: files, now: now)
         let quota = await quotaClient.fetchLimits()
         snapshot.sessionLimit = quota.session
         snapshot.weekLimit = quota.week

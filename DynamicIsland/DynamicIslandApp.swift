@@ -737,6 +737,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         applySelectedAppIcon()
         installTopMenuItemsIfNeeded()
 
+        // Populate LLM usage cards before the notch is first opened; the provider
+        // filter inside makes this a no-op when no usage provider is enabled.
+        LLMUsageManager.shared.refreshAll()
+
         Defaults.publisher(.focusMonitoringMode, options: [])
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in

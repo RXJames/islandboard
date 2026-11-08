@@ -7,7 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Rust-backed usage core**: the Claude/Codex JSONL log scan (streaming parse, cross-file dedup, week/today/session bucketing) moved from `JSONLUsageParser` to the new `atoll-core` Rust crate behind a C-ABI bridge (`UsageCore`). The scan never held an autorelease pool off the main thread, so peaks grew with total log size (upstream #870: 2.59 GB on a week of heavy Claude Code use); the Rust core frees every allocation deterministically and bounds its read buffer at ~1 MB. Pricing still runs in Swift against the live `ModelPricingManager` table. Output parity verified against the old parser on real logs plus a stress corpus.
+
 ### Added
+- **DeepSeek balance in the New API card**: accounts can now be typed as either a New API gateway (quota-unit dialect, as before) or the DeepSeek official API, which is polled through `GET /user/balance` and shown as a real-currency balance (`¥…`/`$…`). DeepSeek exposes no per-request stat routes, so the card shows balance only. Existing saved accounts keep the gateway dialect.
+- **Inference server accounts in the New API card**: a third account type reads a self-hosted model server's Prometheus `/metrics` (the `vllm:*`/`sushi:*` token counters served by MLX/vLLM-style engines) and shows live prefill and decode throughput — window rates between the 60 s refreshes — plus cumulative input/output tokens, request count, and GPU utilization. Servers without those counters report it as an error on the card instead of guessing.
 - **Charging power readings**: the charging HUD now shows actual battery charging watts, and the battery details popover separately shows battery charging power and total power input. Unavailable readings are hidden, and power is sampled only while the HUD or popover is visible. (#894)
 - **Connection status HUDs**: Atoll now shows a Dynamic Island HUD when the Mac goes offline, and a compact inline HUD when it connects to Wi-Fi or Personal Hotspot, using the matching Wi-Fi or hotspot symbol and the connected network name. (#827)
 - **Pin lyrics under the closed notch**: a pin button in the Lyrics panel keeps the line being sung visible after the notch closes, so a song can be followed without holding the pointer over the notch. The strip is drawn as an overlay on padding rather than as a row in the notch stack, so it never widens the panel or shifts the music row. Off by default, and inert unless lyrics are enabled.

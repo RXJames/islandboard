@@ -14,5 +14,6 @@
 #define DynamicIsland_Bridging_Header_h
 
 #import "audio/AudioBridge.h"
+#include "atoll_core.h"
 
 #endif /* DynamicIsland_Bridging_Header_h */
