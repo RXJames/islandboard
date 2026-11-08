@@ -86,7 +86,6 @@ private final class LiquidGlassContainerView: NSView {
         // `alphaValue` nor an ancestor `layer.opacity` dims it. Opacity has
         // to be written onto the material's own layer subtree.
         applyOpacity(in: rootLayer)
-        print("AtollGlass backdrop configured: \(newBackdropLayers.count) layer(s) at opacity \(String(format: "%.3f", Double(backdropOpacity)))")
 
         removeBackdropObservers()
         observedBackdropLayers = newBackdropLayers
@@ -322,7 +321,6 @@ public struct LiquidGlassBackground<Content: View>: NSViewRepresentable {
             container.glassView = glass
             container.glassOpacityHost = opacityHost
             container.hostingView = hosting
-            print("AtollGlass makeNSView glass opacity=\(String(format: "%.3f", Double(opacity)))")
             container.scheduleBackdropSetup()
             return container
         }
@@ -372,9 +370,6 @@ public struct LiquidGlassBackground<Content: View>: NSViewRepresentable {
         if let glass = container.glassView {
             glass.setValue(cornerRadius, forKey: "cornerRadius")
             callPrivateVariantSetter(on: glass, value: variant.rawValue)
-            if abs(container.backdropOpacity - opacity) > 0.0001 {
-                print("AtollGlass update: opacity \(String(format: "%.3f", Double(container.backdropOpacity))) -> \(String(format: "%.3f", Double(opacity)))")
-            }
             container.backdropOpacity = opacity
             container.applyOpacityNow()
         }
