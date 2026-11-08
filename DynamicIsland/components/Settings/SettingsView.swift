@@ -5888,7 +5888,22 @@ struct LockScreenSettings: View {
                         .settingsHighlight(id: highlightID("Glass mode"))
 
                         if lockScreenGlassCustomizationMode == .customLiquid {
-                            Text("Use the sliders below to pick unique Apple liquid-glass variants for each widget.")
+                            Defaults.Toggle(key: .lockScreenMusicUsesEnhancedLiquidBorder) {
+                                Text("Use enhanced liquid border")
+                            }
+                            .disabled(!enableLockScreenMediaWidget)
+                            .settingsHighlight(id: highlightID("Use enhanced liquid border"))
+                            variantSlider(
+                                title: "Music panel variant",
+                                value: musicVariantBinding,
+                                currentValue: lockScreenMusicLiquidGlassVariant.rawValue,
+                                isEnabled: enableLockScreenMediaWidget,
+                                highlight: highlightID("Music panel variant"),
+                                preview: AnyView(
+                                    LockScreenGlassVariantPreviewCell(variant: $lockScreenMusicLiquidGlassVariant)
+                                )
+                            )
+                            Text("Timer and weather widgets keep their own liquid-mode pickers and sliders on the Widgets page.")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
@@ -5974,34 +5989,21 @@ struct LockScreenSettings: View {
                     }
                     .disabled(!enableLockScreenMediaWidget)
                     .settingsHighlight(id: highlightID("Show panel border"))
-                    if lockScreenGlassCustomizationMode == .customLiquid {
-                        Defaults.Toggle(key: .lockScreenMusicUsesEnhancedLiquidBorder) {
-                            Text("Use enhanced liquid border")
-                        }
-                        .disabled(!enableLockScreenMediaWidget)
-                        .settingsHighlight(id: highlightID("Use enhanced liquid border"))
-                    }
-                    if lockScreenGlassCustomizationMode == .customLiquid {
-                        variantSlider(
-                            title: "Music panel variant",
-                            value: musicVariantBinding,
-                            currentValue: lockScreenMusicLiquidGlassVariant.rawValue,
-                            isEnabled: enableLockScreenMediaWidget,
-                            highlight: highlightID("Music panel variant"),
-                            preview: AnyView(
-                                LockScreenGlassVariantPreviewCell(variant: $lockScreenMusicLiquidGlassVariant)
-                            )
-                        )
-                    } else if lockScreenGlassStyle == .frosted {
-                        Defaults.Toggle(key: .lockScreenPanelUsesBlur) {
-                            Text("Enable media panel blur")
-                        }
-                        .disabled(!enableLockScreenMediaWidget)
-                        .settingsHighlight(id: highlightID("Enable media panel blur"))
-                    } else {
-                        blurSettingUnavailableRow
-                            .opacity(enableLockScreenMediaWidget ? 1 : 0.5)
+                    // The liquid-glass rows (enhanced border, variant slider)
+                    // live with the global Glass mode picker on the General
+                    // page; the media section keeps only the frosted toggle.
+                    if lockScreenGlassCustomizationMode != .customLiquid {
+                        if lockScreenGlassStyle == .frosted {
+                            Defaults.Toggle(key: .lockScreenPanelUsesBlur) {
+                                Text("Enable media panel blur")
+                            }
+                            .disabled(!enableLockScreenMediaWidget)
                             .settingsHighlight(id: highlightID("Enable media panel blur"))
+                        } else {
+                            blurSettingUnavailableRow
+                                .opacity(enableLockScreenMediaWidget ? 1 : 0.5)
+                                .settingsHighlight(id: highlightID("Enable media panel blur"))
+                        }
                     }
                     VStack(alignment: .leading, spacing: 4) {
                         Defaults.Toggle(key: .lockScreenMusicFullscreenArtworkEnabled) {
