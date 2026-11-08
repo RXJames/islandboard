@@ -199,7 +199,29 @@ class TerminalManager: ObservableObject {
         return v
     }()
 
-    private init() {}
+    private init() {
+        installClickFocusMonitor()
+    }
+
+    /// SwiftTerm claims first responder neither from `mouseDown` (its override
+    /// is not `open`, so it cannot be subclassed) nor when the panel regains
+    /// key status after Settings, a popover, or another app steals it — keys
+    /// then vanish silently while the caret still draws focused. Any mouse
+    /// click landing in the notch panel re-asserts terminal focus so the user
+    /// can heal it by clicking.
+    private var focusClickMonitor: Any?
+
+    private func installClickFocusMonitor() {
+        guard focusClickMonitor == nil else { return }
+        focusClickMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
+            guard let self,
+                  let window = event.window,
+                  window === self.containerView.window,
+                  window.firstResponder !== self.terminalView else { return event }
+            self.focusTerminalIfPossible()
+            return event
+        }
+    }
 
     // MARK: - Lifecycle
 
@@ -281,6 +303,10 @@ class TerminalManager: ObservableObject {
         DispatchQueue.main.async { [weak self, weak view] in
             guard let self, let view, self.terminalView === view else { return }
             self.refreshTerminalOpacityAndTranslucency(for: view)
+            // A freshly mounted view (first open, or recreation after
+            // restartShell) is not the first responder yet; without this the
+            // shell restarts visibly but silently swallows keystrokes.
+            self.focusTerminalIfPossible()
         }
     }
 

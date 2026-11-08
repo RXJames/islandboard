@@ -811,30 +811,77 @@ struct StandaloneCalendarView: View {
     }
 }
 
-/// Right-click (context menu) deletion shared by both calendar list styles.
-/// The manager refresh is forced, so the row disappears as soon as EventKit
-/// confirms the removal.
+/// Deletion shared by both calendar list styles: right-click menu plus the
+/// mail-style left-swipe that reveals a trash action. The manager refresh is
+/// forced, so the row disappears as soon as EventKit confirms the removal.
 private struct CalendarDeletableModifier: ViewModifier {
     let event: EventModel
     @Binding var errorMessage: String?
 
+    @State private var offset: CGFloat = 0
+    @State private var lockedAxis: Axis?
+
+    private static let revealWidth: CGFloat = 72
+    private static let trigger: CGFloat = 34
+    private static let maxReveal: CGFloat = revealWidth + 20
+
     func body(content: Content) -> some View {
-        content.contextMenu {
-            Button(role: .destructive) {
-                Task {
-                    do {
-                        try await CalendarManager.shared.deleteCalendarItem(identifier: event.id)
-                    } catch {
-                        errorMessage = error.localizedDescription
-                        let message = error.localizedDescription
-                        Task {
-                            try? await Task.sleep(nanoseconds: 3_500_000_000)
-                            if errorMessage == message { errorMessage = nil }
+        ZStack(alignment: .trailing) {
+            Button {
+                delete()
+                withAnimation(.smooth) { offset = 0 }
+            } label: {
+                Image(systemName: "trash.fill")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: Self.revealWidth - 12, height: 26)
+                    .background(Color.red.opacity(0.9), in: Capsule())
+            }
+            .buttonStyle(.plain)
+            .padding(.trailing, 6)
+            .opacity(offset < -4 ? min(1, -offset / Self.trigger) : 0)
+
+            content
+                .offset(x: offset)
+                .gesture(
+                    DragGesture(minimumDistance: 10)
+                        .onChanged { value in
+                            if lockedAxis == nil {
+                                guard abs(value.translation.width) + abs(value.translation.height) > 10 else { return }
+                                lockedAxis = abs(value.translation.width) > abs(value.translation.height) ? .horizontal : .vertical
+                            }
+                            guard lockedAxis == .horizontal else { return }
+                            offset = min(0, max(-Self.maxReveal, value.translation.width))
                         }
-                    }
-                }
+                        .onEnded { _ in
+                            defer { lockedAxis = nil }
+                            guard lockedAxis == .horizontal else { return }
+                            withAnimation(.smooth) {
+                                offset = offset < -Self.trigger ? -Self.revealWidth : 0
+                            }
+                        }
+                )
+        }
+        .contextMenu {
+            Button(role: .destructive) {
+                delete()
             } label: {
                 Label(String(localized: "Delete Event"), systemImage: "trash")
+            }
+        }
+    }
+
+    private func delete() {
+        Task {
+            do {
+                try await CalendarManager.shared.deleteCalendarItem(identifier: event.id)
+            } catch {
+                errorMessage = error.localizedDescription
+                let message = error.localizedDescription
+                Task {
+                    try? await Task.sleep(nanoseconds: 3_500_000_000)
+                    if errorMessage == message { errorMessage = nil }
+                }
             }
         }
     }

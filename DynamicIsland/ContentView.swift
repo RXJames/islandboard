@@ -782,6 +782,11 @@ struct ContentView: View {
                 }
                 if newState == .closed {
                     removeStickyTerminalClickMonitor()
+                    // The first-launch hold-open is released by HelloAnimation via
+                    // closeHello(); if Hello never mounts (connectivity HUD, crash
+                    // mid-animation) a leaked `true` vetoes every later auto-close.
+                    // Any completed close means the first-launch display is over.
+                    coordinator.firstLaunch = false
                 } else {
                     // Install the outside-click monitor for terminal opens that don't
                     // change `currentView` (e.g. shortcut re-opening with the terminal
@@ -2183,6 +2188,16 @@ struct ContentView: View {
                         self.stopHoverClickMonitor()
                         self.finishHoverExit()
                     }
+                } else if self.vm.notchState == .open && !self.isHovering && self.interactionsEnabled {
+                    // A finishHoverExit vetoed by an active popover consumes the
+                    // hover-exit edge: isHovering is already false and the pointer
+                    // is outside, so nothing re-fires it. Re-evaluate the close
+                    // decision periodically so a late-released veto (popover
+                    // teardown, clipboard drag timeout, sharing abort) still
+                    // closes the notch without another hover cycle.
+                    if !self.shouldPreventAutoClose() {
+                        self.vm.close()
+                    }
                 }
 
                 try? await Task.sleep(for: .milliseconds(self.hiddenEdgeHoverPollingIntervalMs()))
@@ -2382,12 +2397,12 @@ struct ContentView: View {
 
         if vm.notchState == .open && !shouldPreventAutoClose() {
             vm.close()
-        } else if vm.notchState == .open
-                    && Defaults[.terminalStickyMode]
-                    && coordinator.currentView == .terminal {
-            // Re-sync monitor state through one code path to avoid
-            // monitor lifecycle races between hover and state updates.
-            syncStickyTerminalOutsideClickMonitor()
+        } else if vm.notchState == .open {
+            if Defaults[.terminalStickyMode] && coordinator.currentView == .terminal {
+                // Re-sync monitor state through one code path to avoid
+                // monitor lifecycle races between hover and state updates.
+                syncStickyTerminalOutsideClickMonitor()
+            }
         }
     }
 
@@ -2475,7 +2490,7 @@ struct ContentView: View {
         // Without this, the hover-exit timer closes the panel mid-drag, tearing
         // down the NSView that is acting as the drag source and cancelling the
         // session — an independent second cause of "drag-out doesn't work".
-        coordinator.firstLaunch || hasAnyActivePopovers() || vm.isAutoCloseSuppressed || ShelfSelectionModel.shared.isDragging || ClipboardManager.shared.isDraggingItem || SharingStateManager.shared.preventNotchClose || (Defaults[.terminalStickyMode] && coordinator.currentView == .terminal)
+        coordinator.firstLaunch || hasAnyActivePopovers() || vm.isAutoCloseSuppressed || ShelfSelectionModel.shared.isDragging || ClipboardManager.shared.isDraggingItem || TabBarInteractionState.shared.isReordering || SharingStateManager.shared.preventNotchClose || (Defaults[.terminalStickyMode] && coordinator.currentView == .terminal)
     }
     
     // Helper to prevent rapid haptic feedback
@@ -2653,6 +2668,29 @@ struct ContentView: View {
             return
         }
 
+        // With the notch open, a two-finger horizontal swipe pages tabs —
+        // except the terminal tab, where the wheel belongs to the shell, and
+        // the home tab while a track is loaded (music skip wins there).
+        // Closed, horizontal swipe keeps skipping tracks.
+        if vm.notchState == .open,
+           Defaults[.enableTrackpadTabSwipe],
+           !TabBarInteractionState.shared.isReordering,
+           coordinator.currentView != .terminal,
+           !canPerformSkipGesture(),
+           !hasAnyActivePopovers(),
+           !vm.isHoveringCalendar,
+           !vm.isScrollGestureActive,
+           !lockScreenManager.isLocked {
+            if skipGestureActiveDirection == nil && translation > Defaults[.gestureSensitivity] {
+                skipGestureActiveDirection = direction
+                if Defaults[.enableHaptics] {
+                    triggerHapticIfAllowed()
+                }
+                pageTab(forward: direction == .forward)
+            }
+            return
+        }
+
         guard canPerformSkipGesture() else {
             skipGestureActiveDirection = nil
             return
@@ -2672,6 +2710,26 @@ struct ContentView: View {
             }
 
             musicManager.handleSkipGesture(direction: effectiveDirection)
+        }
+    }
+
+    private func pageTab(forward: Bool) {
+        let tabs = TabCatalog.enabledTabs()
+        guard !tabs.isEmpty else { return }
+        guard let current = tabs.firstIndex(where: { tab in
+            if tab.view == .extensionExperience {
+                return coordinator.currentView == .extensionExperience
+                    && coordinator.selectedExtensionExperienceID == tab.experienceID
+            }
+            return coordinator.currentView == tab.view
+        }) else { return }
+        let next = forward ? min(current + 1, tabs.count - 1) : max(current - 1, 0)
+        guard next != current else { return }
+        withAnimation(.smooth) {
+            if tabs[next].view == .extensionExperience {
+                coordinator.selectedExtensionExperienceID = tabs[next].experienceID
+            }
+            coordinator.currentView = tabs[next].view
         }
     }
 

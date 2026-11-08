@@ -54,4 +54,66 @@ final class NotesSyncTests: XCTestCase {
         XCTAssertEqual(notes.count, 1)
         XCTAssertFalse(notes[0].isLocked)
     }
+
+    // MARK: Title/body split (title is the first body line in Notes.app)
+
+    private func record(id: String, title: String, plaintext: String) -> String {
+        "\(id)\(fieldSep)\(title)\(fieldSep)100\(fieldSep)200\(fieldSep)\(plaintext)\(fieldSep)\(fieldSep)0"
+    }
+
+    func testParseDropsTitleLineFromContent() {
+        let payload = record(id: "n1", title: "Groceries", plaintext: "Groceries\nMilk\nEggs")
+        let notes = AppleNotesSyncManager.shared.parseRemoteNotes(payload)
+        XCTAssertEqual(notes.count, 1)
+        XCTAssertEqual(notes[0].title, "Groceries")
+        XCTAssertEqual(notes[0].content, "Milk\nEggs")
+    }
+
+    func testParseTitleOnlyNoteYieldsEmptyContent() {
+        let payload = record(id: "n2", title: "Just a title", plaintext: "Just a title")
+        let notes = AppleNotesSyncManager.shared.parseRemoteNotes(payload)
+        XCTAssertEqual(notes.first?.content, "")
+    }
+
+    func testParseKeepsContentWhenFirstLineIsNotTheTitle() {
+        // Defensive: never eat a real content line just because it is first.
+        let payload = record(id: "n3", title: "Groceries", plaintext: "Milk\nEggs")
+        let notes = AppleNotesSyncManager.shared.parseRemoteNotes(payload)
+        XCTAssertEqual(notes.first?.content, "Milk\nEggs")
+    }
+
+    func testPlainBodyPutsTitleFirstAndDedupesStoredTitle() {
+        // Legacy stored content still carries the title line; pushing must not
+        // duplicate it.
+        XCTAssertEqual(
+            AppleNotesSyncManager.plainBody(title: "Groceries", content: "Groceries\nMilk"),
+            "Groceries\nMilk"
+        )
+        XCTAssertEqual(
+            AppleNotesSyncManager.plainBody(title: "Groceries", content: "Milk"),
+            "Groceries\nMilk"
+        )
+        XCTAssertEqual(AppleNotesSyncManager.plainBody(title: "Only title", content: ""), "Only title")
+    }
+
+    func testRoundTripPushThenFetchIsStable() {
+        // Push renders title+content; Notes' plaintext for that body is exactly
+        // `plainBody`; fetching it back must yield the same title/content pair.
+        let title = "Meeting"
+        let content = "agenda A\nagenda B"
+        let plain = AppleNotesSyncManager.plainBody(title: title, content: content)
+        XCTAssertEqual(plain, "Meeting\nagenda A\nagenda B")
+        let payload = record(id: "n4", title: title, plaintext: plain)
+        let notes = AppleNotesSyncManager.shared.parseRemoteNotes(payload)
+        XCTAssertEqual(notes.first?.title, title)
+        XCTAssertEqual(notes.first?.content, content)
+    }
+
+    func testHtmlBodyEscapesAndTagsEachLine() {
+        let id = UUID(uuidString: "6E2F3A4B-5C6D-7E8F-9A0B-1C2D3E4F5A6B")!
+        let html = AppleNotesSyncManager.htmlBody(plain: "A & B\n<safe>", noteID: id)
+        XCTAssertTrue(html.hasPrefix("<div>A &amp; B</div>"))
+        XCTAssertTrue(html.contains("<div>&lt;safe&gt;</div>"))
+        XCTAssertTrue(html.hasSuffix("<!--atoll:id=\(id.uuidString)-->"))
+    }
 }

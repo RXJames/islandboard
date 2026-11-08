@@ -119,6 +119,26 @@ class DynamicIslandViewModel: NSObject, ObservableObject {
         isAutoCloseSuppressed = false
     }
 
+    /// Clears every auto-close veto that lives outside the token sets.
+    /// Popover presenters clear their flags via `.onChange`, which never fires
+    /// when the owning view is torn down by the close itself (header buttons
+    /// exist only while the notch is open), so a leaked `true` blocks
+    /// auto-close on every later open. Compact-mode popovers (battery,
+    /// reminder, media output) that survive the teardown lose their veto
+    /// instead of wedging the notch open.
+    private func resetCloseVetoes() {
+        isBatteryPopoverActive = false
+        isClipboardPopoverActive = false
+        isColorPickerPopoverActive = false
+        isStatsPopoverActive = false
+        isTimerPopoverActive = false
+        isPerAppVolumePopoverActive = false
+        isCaffeinatePopoverActive = false
+        isReminderPopoverActive = false
+        activeMediaOutputPopovers.removeAll()
+        isMediaOutputPopoverActive = false
+    }
+
     private func focusClipboardTabIfNeeded() {
         guard !Defaults[.enableMinimalisticUI] else { return }
         guard Defaults[.enableClipboardManager] else { return }
@@ -447,6 +467,7 @@ class DynamicIslandViewModel: NSObject, ObservableObject {
         notchState = .closed
         resetScrollGestureSuppression()
         resetAutoCloseSuppression()
+        resetCloseVetoes()
 
         // Set the current view to shelf if it contains files and the user enables openShelfByDefault
         // Otherwise, if the user has not enabled openLastShelfByDefault, set the view to home

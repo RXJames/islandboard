@@ -1524,6 +1524,12 @@ extension Defaults.Keys {
     static let savedNotes = Key<[NoteItem]>("savedNotes", default: [])
     static let enableAppleNotesSync = Key<Bool>("enableAppleNotesSync", default: false)
     static let appleNotesLastSyncDate = Key<Date?>("appleNotesLastSyncDate", default: nil)
+
+    // MARK: Tab bar
+    /// User-permitted tab reordering: ids in display order (see TabSelectionView).
+    /// Ids absent from the list (new features) append after the known ones.
+    static let tabOrder = Key<[String]>("tabOrder", default: [])
+    static let enableTrackpadTabSwipe = Key<Bool>("enableTrackpadTabSwipe", default: true)
     
     // Helper to determine the default media controller based on macOS version
     static var defaultMediaController: MediaControllerType {

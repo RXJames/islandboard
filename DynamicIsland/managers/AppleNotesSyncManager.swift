@@ -58,8 +58,8 @@ final class AppleNotesSyncManager: ObservableObject {
     @Published private(set) var lastError: String?
 
     private static let syncFolderName = "Atoll"
-    private static let fieldSeparator = "\u{241F}"
-    private static let recordSeparator = "\u{241E}"
+    static let fieldSeparator = "\u{241F}"
+    static let recordSeparator = "\u{241E}"
     private static let atollTagPattern = #"<!--atoll:id=([0-9A-Fa-f-]{36})-->"#
 
     private var syncTask: Task<Void, Never>?
@@ -260,6 +260,21 @@ final class AppleNotesSyncManager: ObservableObject {
         return trimmed.isEmpty ? String(localized: "Untitled Note") : trimmed
     }
 
+    /// Drops the leading line of `content` when it repeats `title` — the shape
+    /// AppleScript's `plaintext` always has, because Notes renders the title as
+    /// the first body line. Self-heals notes synced while the title/body split
+    /// was broken.
+    static func stripLeadingTitle(_ content: String, title: String) -> String {
+        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !content.isEmpty, !trimmedTitle.isEmpty else { return content }
+        guard let newline = content.firstIndex(of: "\n") else {
+            return content.trimmingCharacters(in: .whitespacesAndNewlines) == trimmedTitle ? "" : content
+        }
+        let firstLine = String(content[..<newline]).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard firstLine == trimmedTitle else { return content }
+        return String(content[content.index(after: newline)...])
+    }
+
     // MARK: - AppleScript bridge
 
     private func fetchRemoteNotes() async throws -> [RemoteAppleNote] {
@@ -359,7 +374,11 @@ final class AppleNotesSyncManager: ObservableObject {
                 guard let created = parseAppleScriptSeconds(String(fields[2])),
                       let modified = parseAppleScriptSeconds(String(fields[3])) else { return nil }
 
-                let content = String(fields[4])
+                // Notes derives the display name from the first body line, so
+                // `plaintext` starts with the title. Store the remainder as the
+                // content; keeping the title line in `content` too is what made
+                // an edited body clobber the title and vice versa.
+                let content = Self.stripLeadingTitle(String(fields[4]), title: title)
                 let atollId = fields.count > 5
                     ? UUID(uuidString: String(fields[5]))
                     : extractAtollId(from: content)
@@ -449,8 +468,18 @@ final class AppleNotesSyncManager: ObservableObject {
         try await runScriptVoid(script)
     }
 
-    private func htmlBody(for note: NoteItem) -> String {
-        let escaped = note.content
+    /// Canonical plain text pushed to Notes: title as the first line (Notes
+    /// derives the visible name from it), then the content without its
+    /// duplicated title line.
+    static func plainBody(title: String, content: String) -> String {
+        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let body = stripLeadingTitle(content, title: trimmedTitle)
+        if trimmedTitle.isEmpty { return body }
+        return body.isEmpty ? trimmedTitle : trimmedTitle + "\n" + body
+    }
+
+    static func htmlBody(plain: String, noteID: UUID) -> String {
+        let escaped = plain
             .replacingOccurrences(of: "&", with: "&amp;")
             .replacingOccurrences(of: "<", with: "&lt;")
             .replacingOccurrences(of: ">", with: "&gt;")
@@ -464,7 +493,14 @@ final class AppleNotesSyncManager: ObservableObject {
             }
             .joined()
 
-        return html + "<!--atoll:id=\(note.id.uuidString)-->"
+        return html + "<!--atoll:id=\(noteID.uuidString)-->"
+    }
+
+    private func htmlBody(for note: NoteItem) -> String {
+        Self.htmlBody(
+            plain: Self.plainBody(title: sanitizedTitle(note.title), content: note.content),
+            noteID: note.id
+        )
     }
 
     private func appleScriptEscape(_ value: String) -> String {

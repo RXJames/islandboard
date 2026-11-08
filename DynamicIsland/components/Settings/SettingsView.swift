@@ -1350,6 +1350,11 @@ struct GeneralSettings: View {
             .disabled(!openNotchOnHover)
             .settingsHighlight(id: highlightID("Enable gestures"))
             if enableGestures {
+                Defaults.Toggle(key: .enableTrackpadTabSwipe) {
+                    Text("Switch tabs with horizontal swipe")
+                }
+                .settingsHighlight(id: highlightID("Switch tabs with horizontal swipe"))
+
                 Defaults.Toggle(key: .enableHorizontalMusicGestures) {
                     Text("Media change with horizontal gestures")
                 }
