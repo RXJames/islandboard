@@ -68,38 +68,43 @@ final class TabCatalogTests: XCTestCase {
         )
     }
 
-    // MARK: reorder(dragging:onto:)
+    // MARK: moved(dragging:to:)
 
-    func testReorderLeftwardOccupiesTargetSlot() {
+    func testMovedLeftwardPlacesGapAtTarget() {
         let ids = ["a", "b", "c", "d"]
-        XCTAssertEqual(TabCatalog.reorder(ids, dragging: "d", onto: "b"), ["a", "d", "b", "c"])
+        XCTAssertEqual(TabCatalog.moved(ids, dragging: "d", to: 1), ["a", "d", "b", "c"])
     }
 
-    func testReorderRightwardOccupiesTargetSlot() {
+    func testMovedRightwardPlacesGapAtTarget() {
         let ids = ["a", "b", "c", "d"]
-        XCTAssertEqual(TabCatalog.reorder(ids, dragging: "a", onto: "c"), ["b", "a", "c", "d"])
+        XCTAssertEqual(TabCatalog.moved(ids, dragging: "a", to: 2), ["b", "c", "a", "d"])
     }
 
-    func testReorderOntoSelfIsNoop() {
+    func testMovedToOwnIndexIsNoop() {
         let ids = ["a", "b", "c"]
-        XCTAssertEqual(TabCatalog.reorder(ids, dragging: "b", onto: "b"), ids)
+        XCTAssertEqual(TabCatalog.moved(ids, dragging: "b", to: 1), ids)
     }
 
-    func testReorderWithUnknownIDsIsNoop() {
+    func testMovedClampsToRange() {
         let ids = ["a", "b"]
-        XCTAssertEqual(TabCatalog.reorder(ids, dragging: "x", onto: "a"), ids)
-        XCTAssertEqual(TabCatalog.reorder(ids, dragging: "a", onto: "x"), ids)
+        XCTAssertEqual(TabCatalog.moved(ids, dragging: "a", to: 9), ["b", "a"])
+        XCTAssertEqual(TabCatalog.moved(ids, dragging: "b", to: -3), ["b", "a"])
     }
 
-    func testConsecutiveDropEnteredReordersRemainPermutations() {
-        // Live reflow calls reorder repeatedly while hovering; the result must
-        // stay a permutation of the same ids (no duplicates, no losses).
+    func testMovedWithUnknownIDIsNoop() {
+        let ids = ["a", "b"]
+        XCTAssertEqual(TabCatalog.moved(ids, dragging: "x", to: 0), ids)
+    }
+
+    func testConsecutiveGapMovesRemainPermutations() {
+        // Every pointer-cross during one drag re-inserts the gap; the
+        // preview order must stay a permutation of the same ids.
         var ids = ["a", "b", "c", "d"]
-        ids = TabCatalog.reorder(ids, dragging: "a", onto: "d")
-        ids = TabCatalog.reorder(ids, dragging: "d", onto: "b")
-        ids = TabCatalog.reorder(ids, dragging: "c", onto: "a")
-        XCTAssertEqual(Set(ids), Set(["a", "b", "c", "d"]))
+        ids = TabCatalog.moved(ids, dragging: "a", to: 3)
+        ids = TabCatalog.moved(ids, dragging: "d", to: 1)
+        ids = TabCatalog.moved(ids, dragging: "c", to: 0)
         XCTAssertEqual(ids.count, 4)
+        XCTAssertEqual(Set(ids), Set(["a", "b", "c", "d"]))
     }
 }
 #endif

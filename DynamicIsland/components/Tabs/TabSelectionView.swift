@@ -141,15 +141,14 @@ enum TabCatalog {
         return known + fresh
     }
 
-    /// Move `draggedID` onto the slot currently occupied by `targetID`.
-    static func reorder(_ ids: [String], dragging draggedID: String, onto targetID: String) -> [String] {
+    /// Remove `draggedID` and re-insert it so exactly `index` entries
+    /// precede it (clamped to the ends). The gap model of the drag: the
+    /// gap travels, the list follows.
+    static func moved(_ ids: [String], dragging draggedID: String, to index: Int) -> [String] {
         var result = ids
-        guard let from = result.firstIndex(of: draggedID),
-              let targetIndex = result.firstIndex(of: targetID),
-              from != targetIndex else { return ids }
+        guard let from = result.firstIndex(of: draggedID) else { return ids }
         result.remove(at: from)
-        let to = targetIndex > from ? targetIndex - 1 : targetIndex
-        result.insert(draggedID, at: to)
+        result.insert(draggedID, at: min(max(index, 0), result.count))
         return result
     }
 
@@ -221,68 +220,124 @@ struct TabSelectionView: View {
             by: tabOrder
         )
     }
+    // Dock-style reorder state. The live order is NOT committed while
+    // dragging: `previewOrder` is a scratch copy, the dragged icon floats
+    // in an overlay following the finger, and its old slot renders as a
+    // gap that slides between neighbours. Positions are decided against
+    // frames captured at drag start, so animated neighbour movement can
+    // never feed back into the hit test (the old live-swap version raced
+    // its own preference updates and stuttered).
     @State private var draggedTabID: String?
-    @State private var dragOriginX: CGFloat = 0
-    @State private var dragTranslation: CGFloat = 0
+    @State private var previewOrder: [String] = []
+    @State private var dragPointerX: CGFloat = 0
+    @State private var dragStartFrames: [String: CGRect] = [:]
+    @State private var gapWidth: CGFloat = 32
     @State private var tabFrames: [String: CGRect] = [:]
-    var body: some View {
-        HStack(spacing: tabSpacing) {
-            ForEach(Array(tabs.enumerated()), id: \.element.id) { idx, tab in
-                let isSelected = isSelected(tab)
-                let activeAccent = tab.accentColor ?? .white
 
-                // Render the tab button
-                TabButton(label: tab.label, icon: tab.icon, selected: isSelected) {
-                    if tab.view == .extensionExperience {
-                        coordinator.selectedExtensionExperienceID = tab.experienceID
+    private static let dragSpace = "atollTabDrag"
+    private var dragSettle: Animation { .spring(response: 0.28, dampingFraction: 0.82) }
+
+    private var displayOrder: [String] {
+        draggedTabID == nil ? tabs.map(\.id) : previewOrder
+    }
+
+    private var draggedTab: TabModel? {
+        guard let id = draggedTabID else { return nil }
+        return tabs.first { $0.id == id }
+    }
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            HStack(spacing: tabSpacing) {
+                ForEach(displayOrder, id: \.self) { id in
+                    if id == draggedTabID {
+                        // The gap the neighbours part around.
+                        Color.clear
+                            .frame(width: gapWidth, height: 26)
+                    } else if let tab = tabs.first(where: { $0.id == id }) {
+                        tabButton(tab)
                     }
-                    coordinator.currentView = tab.view
                 }
-                .frame(height: 26)
-                .foregroundStyle(isSelected ? activeAccent : .gray)
-                .background {
-                    if isSelected {
-                        Capsule()
-                            .fill((tab.accentColor ?? Color(nsColor: .secondarySystemFill)).opacity(0.25))
-                            .shadow(color: (tab.accentColor ?? .clear).opacity(0.4), radius: 8)
-                            .matchedGeometryEffect(id: "capsule", in: animation)
-                    } else {
-                        Capsule()
-                            .fill(Color.clear)
-                            .matchedGeometryEffect(id: "capsule", in: animation)
-                            .hidden()
-                    }
-                }
-                // Drag-to-reorder via a plain gesture — deliberately NOT
-                // `.onDrag`: a pasteboard drag session spawns a drag-image
-                // window at the very top of the screen, which macOS treats as
-                // "window dragged to the top edge" and exposes Mission
-                // Control right next to the notch.
-                .offset(x: draggedTabID == tab.id ? dragTranslation : 0)
-                .zIndex(draggedTabID == tab.id ? 1 : 0)
-                .scaleEffect(draggedTabID == tab.id ? 1.15 : 1)
-                .background(
-                    GeometryReader { proxy in
-                        Color.clear.preference(
-                            key: TabFrameKey.self,
-                            value: [tab.id: proxy.frame(in: .global)]
-                        )
-                    }
-                )
-                .highPriorityGesture(reorderGesture(for: tab))
-                .animation(.smooth, value: draggedTabID)
+            }
+
+            if let tab = draggedTab {
+                // The lifted icon: follows the finger, casts a shadow,
+                // ignores touches so the drag stays with its source view.
+                tabButton(tab, floating: true)
+                    .frame(width: gapWidth, height: 26)
+                    .shadow(color: .black.opacity(0.35), radius: 8, y: 4)
+                    .offset(x: dragPointerX - gapWidth / 2, y: 0)
+                    .allowsHitTesting(false)
             }
         }
+        .coordinateSpace(name: Self.dragSpace)
         .onPreferenceChange(TabFrameKey.self) { tabFrames = $0 }
         .onDisappear {
             if TabBarInteractionState.shared.isReordering {
                 TabBarInteractionState.shared.isReordering = false
+                draggedTabID = nil
             }
         }
-        .clipShape(Capsule())
         .onAppear {
             ensureValidSelection(with: tabs)
         }
+    }
+
+    /// One tab bar item. `floating` renders the lifted drag copy (bigger,
+    /// no tap action, no gesture); both variants carry the same
+    /// matched-geometry id so releasing glides the icon into its slot.
+    @ViewBuilder
+    private func tabButton(_ tab: TabModel, floating: Bool = false) -> some View {
+        let isSelected = isSelected(tab)
+        let activeAccent = tab.accentColor ?? .white
+
+        let base = TabButton(label: tab.label, icon: tab.icon, selected: isSelected) {
+            if tab.view == .extensionExperience {
+                coordinator.selectedExtensionExperienceID = tab.experienceID
+            }
+            coordinator.currentView = tab.view
+        }
+        .frame(height: 26)
+        .foregroundStyle(isSelected ? activeAccent : .gray)
+        .background {
+            if isSelected {
+                Capsule()
+                    .fill((tab.accentColor ?? Color(nsColor: .secondarySystemFill)).opacity(0.25))
+                    .shadow(color: (tab.accentColor ?? .clear).opacity(0.4), radius: 8)
+                    .matchedGeometryEffect(id: "capsule", in: animation)
+            } else {
+                Capsule()
+                    .fill(Color.clear)
+                    .matchedGeometryEffect(id: "capsule", in: animation)
+                    .hidden()
+            }
+        }
+        .background(
+            GeometryReader { proxy in
+                Color.clear.preference(
+                    key: TabFrameKey.self,
+                    value: [tab.id: proxy.frame(in: .named(Self.dragSpace))]
+                )
+            }
+        )
+        .scaleEffect(floating ? 1.15 : 1)
+        .matchedGeometryEffect(id: "floating-\(tab.id)", in: animation, isSource: draggedTabID != tab.id)
+
+        if floating {
+            base
+        } else {
+            draggable(base, tab)
+        }
+    }
+
+    // Drag-to-reorder via a plain gesture — deliberately NOT
+    // `.onDrag`: a pasteboard drag session spawns a drag-image
+    // window at the very top of the screen, which macOS treats as
+    // "window dragged to the top edge" and exposes Mission
+    // Control right next to the notch.
+    @ViewBuilder
+    private func draggable(_ view: some View, _ tab: TabModel) -> some View {
+        view.highPriorityGesture(reorderGesture(for: tab))
     }
 
     private var extensionTabsEnabled: Bool {
@@ -323,51 +378,58 @@ struct TabSelectionView: View {
     }
 
     private let tabSpacing: CGFloat = 24
-    @State private var lastTranslate: CGFloat = 0
 
-    /// Drag horizontally over a neighbouring tab; when the dragged icon's
-    /// centre crosses it, swap live and keep the icon under the finger by
-    /// shifting the translation by exactly the slot distance.
+    /// Drag horizontally; the neighbours part around a gap that tracks the
+    /// finger, and the order commits once on release.
     private func reorderGesture(for tab: TabModel) -> some Gesture {
-        DragGesture(minimumDistance: 8)
+        DragGesture(minimumDistance: 8, coordinateSpace: .named(Self.dragSpace))
             .onChanged { value in
                 if draggedTabID != tab.id {
-                    draggedTabID = tab.id
-                    dragTranslation = 0
-                    lastTranslate = 0
-                    TabBarInteractionState.shared.isReordering = true
+                    beginDrag(tab)
                 }
-                dragTranslation += value.translation.width - lastTranslate
-                lastTranslate = value.translation.width
-                swapIfCrossed(tab)
+                guard draggedTabID == tab.id else { return }
+                dragPointerX = value.location.x
+                updateGapInsertion()
             }
             .onEnded { _ in
-                withAnimation(.smooth) {
-                    dragTranslation = 0
-                }
-                draggedTabID = nil
-                lastTranslate = 0
-                TabBarInteractionState.shared.isReordering = false
+                endDrag()
             }
     }
 
-    private func swapIfCrossed(_ tab: TabModel) {
-        guard let base = tabFrames[tab.id] else { return }
-        let dragCenterX = base.midX + dragTranslation
-        let ids = tabs.map(\.id)
-        for other in tabs where other.id != tab.id {
-            guard let frame = tabFrames[other.id],
-                  frame.minX <= dragCenterX, dragCenterX <= frame.maxX else { continue }
-            let movingRight = frame.midX > base.midX
-            let next = TabCatalog.reorder(ids, dragging: tab.id, onto: other.id)
-            guard next != ids else { return }
-            // Compensate so the icon stays glued to the finger after the slot shift.
-            dragTranslation += (movingRight ? -1 : 1) * (frame.width + tabSpacing)
-            withAnimation(.smooth) {
-                Defaults[.tabOrder] = next
-            }
-            return
+    private func beginDrag(_ tab: TabModel) {
+        guard let own = tabFrames[tab.id] else { return }
+        gapWidth = own.width
+        dragStartFrames = tabFrames
+        previewOrder = tabs.map(\.id)
+        draggedTabID = tab.id
+        TabBarInteractionState.shared.isReordering = true
+    }
+
+    /// Where the gap belongs: the count of neighbours whose (frozen,
+    /// drag-start) centre sits left of the finger. Frozen frames keep the
+    /// decision stable while the neighbours are mid-animation.
+    private func updateGapInsertion() {
+        guard let dragID = draggedTabID else { return }
+        let neighbours = previewOrder.filter { $0 != dragID }
+        let insertAt = neighbours.count { (dragStartFrames[$0]?.midX ?? .infinity) < dragPointerX }
+        guard previewOrder.firstIndex(of: dragID) != insertAt else { return }
+        let order = TabCatalog.moved(previewOrder, dragging: dragID, to: insertAt)
+        withAnimation(dragSettle) {
+            previewOrder = order
         }
+    }
+
+    private func endDrag() {
+        guard draggedTabID != nil else { return }
+        let finalOrder = previewOrder
+        withAnimation(dragSettle) {
+            // Same-id matched geometry: the floating icon glides from the
+            // finger into the gap as it becomes a real slot again.
+            Defaults[.tabOrder] = finalOrder
+            draggedTabID = nil
+            previewOrder = []
+        }
+        TabBarInteractionState.shared.isReordering = false
     }
 }
 
