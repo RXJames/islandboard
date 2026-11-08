@@ -145,6 +145,14 @@ private struct ScrollMonitor: NSViewRepresentable {
             // carried it now needs a slightly longer swipe.
             guard event.momentumPhase.isEmpty else { return }
 
+            // A pan-direction monitor only serves input that actually moves
+            // that way. Trackpad gestures carry cross-axis drift; without
+            // this, a horizontal swipe leaks into the vertical close
+            // gesture (ghost fade) and a vertical list scroll can page
+            // tabs.
+            let horizontalInput = abs(event.scrollingDeltaX) >= abs(event.scrollingDeltaY)
+            guard direction.isHorizontal == horizontalInput else { return }
+
             let s = direction.signed(deltaX: event.scrollingDeltaX, deltaY: event.scrollingDeltaY)
             guard s.magnitude > noiseThreshold else { return }
             accumulated = s > 0 ? accumulated + s : 0

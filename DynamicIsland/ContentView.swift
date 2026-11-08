@@ -843,7 +843,7 @@ struct ContentView: View {
                 }
                 syncStickyTerminalOutsideClickMonitor()
                 // The outgoing home view may be torn down while the pointer
-                // still sits on the music block; drop the stale hover flag so
+                // still sits on the music block; drop the stale flag so
                 // swipes elsewhere page tabs until real hover resumes.
                 vm.isHoveringMusicBlock = false
             }
@@ -2673,17 +2673,17 @@ struct ContentView: View {
         }
 
         // With the notch open, a two-finger horizontal swipe pages tabs —
-        // except on the terminal tab (the shell owns the wheel), over the
-        // calendar (the wheel picker consumes horizontal rotation), and
-        // wherever the home tab's music player sits under the pointer
-        // (music skip wins there). Closed, horizontal swipe skips tracks.
+        // except over the calendar (its wheel picker consumes horizontal
+        // rotation) and wherever the home tab's music player sits under
+        // the pointer (music skip wins there). Terminal pages too: shell
+        // scrollback is a vertical gesture and SwiftTerm keeps receiving
+        // it. Closed, horizontal swipe skips tracks.
         // Scroll suppression is deliberately NOT checked: notes/clipboard
         // lists suppress the *vertical* close gesture by hover, which must
         // not disable paging.
         if vm.notchState == .open,
            Defaults[.enableTrackpadTabSwipe],
            !TabBarInteractionState.shared.isReordering,
-           coordinator.currentView != .terminal,
            !canPerformSkipGesture(),
            !hasAnyActivePopovers(),
            !vm.isHoveringCalendar,
