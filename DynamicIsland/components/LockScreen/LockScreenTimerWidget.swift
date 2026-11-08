@@ -141,8 +141,12 @@ struct LockScreenTimerWidget: View {
     }
 
     private var customLiquidBackground: some View {
-        LiquidGlassBackground(variant: .defaultVariant, cornerRadius: Self.cornerRadius, opacity: timerGlassVariant.backgroundOpacity) {
-            Color.black.opacity(0.12)
+        LiquidGlassBackground(variant: .defaultVariant, cornerRadius: Self.cornerRadius, opacity: 1.0) {
+            ZStack {
+                Color(nsColor: .windowBackgroundColor)
+                    .opacity(timerGlassVariant.panelSolidity)
+                Color.black.opacity(0.12)
+            }
         }
     }
 

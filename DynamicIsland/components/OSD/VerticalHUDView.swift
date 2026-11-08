@@ -268,9 +268,13 @@ struct VerticalHUDView: View {
                     LiquidGlassBackground(
                         variant: .defaultVariant,
                         cornerRadius: max(currentWidth, hudWidth),
-                        opacity: verticalHUDLiquidGlassVariant.backgroundOpacity
+                        opacity: 1.0
                     ) {
-                        Color.white.opacity(0.04)
+                        ZStack {
+                            Color(nsColor: .windowBackgroundColor)
+                                .opacity(verticalHUDLiquidGlassVariant.panelSolidity)
+                            Color.white.opacity(0.04)
+                        }
                     }
                 } else {
                     Capsule()

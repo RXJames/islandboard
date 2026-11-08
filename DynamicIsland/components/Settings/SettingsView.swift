@@ -2283,7 +2283,7 @@ private struct HUDAndOSDSettingsView: View {
                                         HStack {
                                             Text("Glass opacity")
                                             Spacer()
-                                            Text("\(Int((Double(verticalHUDLiquidGlassVariant.rawValue) / Double(LiquidGlassVariant.supportedRange.upperBound) * 100).rounded()))%")
+                                            Text("\(Int(((1 - Double(verticalHUDLiquidGlassVariant.rawValue) / Double(LiquidGlassVariant.supportedRange.upperBound)) * 100).rounded()))%")
                                                 .font(.caption)
                                                 .foregroundStyle(.secondary)
                                                 .monospacedDigit()
@@ -4590,7 +4590,7 @@ private struct LocalSendSettingsSection: View {
                     HStack {
                         Text("Glass opacity")
                         Spacer()
-                        Text("\(Int((Double(liquidGlassVariant.rawValue) / Double(LiquidGlassVariant.supportedRange.upperBound) * 100).rounded()))%")
+                        Text("\(Int(((1 - Double(liquidGlassVariant.rawValue) / Double(LiquidGlassVariant.supportedRange.upperBound)) * 100).rounded()))%")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .monospacedDigit()
@@ -5972,7 +5972,7 @@ struct LockScreenSettings: View {
                                     )
                                 )
                             }
-                            Text("The slider fades the panel glass from fully transparent (left) to fully opaque (right). The timer widget keeps its own liquid-mode picker and slider on the Widgets page.")
+                            Text("The slider takes the panel from fully opaque (left) to pure liquid glass (right). The timer widget keeps its own liquid-mode picker and slider on the Widgets page.")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
@@ -6527,7 +6527,7 @@ extension LockScreenSettings {
             HStack {
                 Text(title)
                 Spacer()
-                Text("\(Int((Double(currentValue) / Double(LiquidGlassVariant.supportedRange.upperBound) * 100).rounded()))%")
+                Text("\(Int(((1 - Double(currentValue) / Double(LiquidGlassVariant.supportedRange.upperBound)) * 100).rounded()))%")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .monospacedDigit()
@@ -6642,13 +6642,17 @@ private struct LockScreenGlassVariantPreviewCell: View {
         // desktop *behind the settings window*, so the live material here
         // would show whatever happens to be under the window - nothing like
         // glass over the lock screen wallpaper. A regular material blurs its
-        // in-window backdrop (the mock wallpaper below) and fades with the
-        // exact same alpha the panels use, so this preview is the same
-        // composite: wallpaper blur + tint at `backgroundOpacity`.
+        // in-window backdrop (the mock wallpaper below); the solid wash on
+        // top is the same `panelSolidity` the panels layer over their glass.
         RoundedRectangle(cornerRadius: previewCornerRadius, style: .continuous)
             .fill(.regularMaterial)
-            .overlay(Color.white.opacity(0.04))
-            .opacity(variant.backgroundOpacity)
+            .overlay {
+                ZStack {
+                    Color(nsColor: .windowBackgroundColor)
+                        .opacity(variant.panelSolidity)
+                    Color.white.opacity(0.04)
+                }
+            }
             .frame(width: previewSize.width, height: previewSize.height)
             .shadow(color: Color.black.opacity(0.2), radius: 10, x: 0, y: 6)
     }
@@ -9140,7 +9144,7 @@ struct CustomOSDSettings: View {
                                     HStack {
                                         Text("Glass opacity")
                                         Spacer()
-                                        Text("\(Int((Double(osdLiquidGlassVariant.rawValue) / Double(LiquidGlassVariant.supportedRange.upperBound) * 100).rounded()))%")
+                                        Text("\(Int(((1 - Double(osdLiquidGlassVariant.rawValue) / Double(LiquidGlassVariant.supportedRange.upperBound)) * 100).rounded()))%")
                                             .font(.caption)
                                             .foregroundStyle(.secondary)
                                             .monospacedDigit()

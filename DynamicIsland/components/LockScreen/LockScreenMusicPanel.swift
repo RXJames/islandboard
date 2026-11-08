@@ -1543,8 +1543,16 @@ struct LockScreenMusicPanel: View {
 
     @ViewBuilder
     private var customLiquidPanelBackdrop: some View {
-        LiquidGlassBackground(variant: .defaultVariant, cornerRadius: panelCornerRadius, opacity: musicGlassVariant.backgroundOpacity) {
-            Color.white.opacity(0.04)
+        LiquidGlassBackground(variant: .defaultVariant, cornerRadius: panelCornerRadius, opacity: 1.0) {
+            ZStack {
+                // Apple's treatment of partially-transparent material: the
+                // glass keeps refracting, a solid wash milks it over. The
+                // slider runs opaque (left) to pure glass (right); fading
+                // the frost itself just deletes the material.
+                Color(nsColor: .windowBackgroundColor)
+                    .opacity(musicGlassVariant.panelSolidity)
+                Color.white.opacity(0.04)
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .allowsHitTesting(false)
@@ -1677,8 +1685,9 @@ struct LockScreenMusicPanel: View {
 
     @ViewBuilder
     private func customLiquidAlbumArtBackground(cornerRadius: CGFloat) -> some View {
-        LiquidGlassBackground(variant: .defaultVariant, cornerRadius: cornerRadius, opacity: musicGlassVariant.backgroundOpacity) {
-            Color.clear
+        LiquidGlassBackground(variant: .defaultVariant, cornerRadius: cornerRadius, opacity: 1.0) {
+            Color(nsColor: .windowBackgroundColor)
+                .opacity(musicGlassVariant.panelSolidity)
         }
     }
 

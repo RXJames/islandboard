@@ -28,6 +28,11 @@ private final class LiquidGlassContainerView: NSView {
     /// wrapper's `layer.opacity` is what actually makes the material
     /// translucent while the hosted content stays fully opaque.
     weak var glassOpacityHost: NSView?
+    /// Current material opacity (0 = fully transparent, 1 = fully opaque).
+    /// Applied directly to every `CABackdropLayer` under the glass because
+    /// those layers are composited by the WindowServer and do not inherit
+    /// ancestor `layer.opacity`.
+    var backdropOpacity: CGFloat = 1.0
     var hostingView: NSHostingView<AnyView>?
 
     private var observedBackdropLayers: [CALayer] = []
@@ -67,18 +72,28 @@ private final class LiquidGlassContainerView: NSView {
     private func configureBackdropLayers() {
         guard let glassView else { return }
         guard let rootLayer = glassView.layer else {
+            // AppKit creates the glass backing layer lazily, after the
+            // window has been displayed at least once. Keep rescheduling
+            // until it exists.
             scheduleBackdropSetup()
             return
         }
 
         setBackdropProperties(in: rootLayer)
         let newBackdropLayers = collectBackdropLayers(in: rootLayer)
+        // The glass backing layer sets `allowsGroupBlending = NO` and the
+        // backdrop is composited by the WindowServer, so neither the view's
+        // `alphaValue` nor an ancestor `layer.opacity` dims it. Opacity has
+        // to be written onto the material's own layer subtree.
+        applyOpacity(in: rootLayer)
+        print("AtollGlass backdrop configured: \(newBackdropLayers.count) layer(s) at opacity \(String(format: "%.3f", Double(backdropOpacity)))")
 
         removeBackdropObservers()
         observedBackdropLayers = newBackdropLayers
         for backdrop in observedBackdropLayers {
             backdrop.addObserver(self, forKeyPath: windowServerAwareKeyPath, options: [.old, .new], context: nil)
             backdrop.addObserver(self, forKeyPath: scaleKeyPath, options: [.old, .new], context: nil)
+            backdrop.addObserver(self, forKeyPath: "opacity", options: [.old, .new], context: nil)
         }
     }
 
@@ -88,6 +103,22 @@ private final class LiquidGlassContainerView: NSView {
             layer.setValue(1.0, forKey: scaleKeyPath)
         }
         layer.sublayers?.forEach { setBackdropProperties(in: $0) }
+    }
+
+    /// Fades the material's own layer subtree. `GlassBackingLayer` disables
+    /// group blending and the WindowServer composites the backdrop directly,
+    /// so ancestor opacity never reaches it — every layer under the glass
+    /// backing has to carry the value.
+    private func applyOpacity(in layer: CALayer) {
+        layer.opacity = Float(backdropOpacity)
+        layer.sublayers?.forEach { applyOpacity(in: $0) }
+    }
+
+    /// Synchronous fade for `updateNSView`, so slider drags take effect on
+    /// the spot instead of waiting for the next coalesced backdrop pass.
+    func applyOpacityNow() {
+        guard let rootLayer = glassView?.layer else { return }
+        applyOpacity(in: rootLayer)
     }
 
     private func collectBackdropLayers(in layer: CALayer) -> [CALayer] {
@@ -114,6 +145,12 @@ private final class LiquidGlassContainerView: NSView {
             if let newScale = (change?[.newKey] as? NSNumber)?.doubleValue, newScale != 1.0 {
                 layer.setValue(1.0, forKey: scaleKeyPath)
             }
+        } else if keyPath == "opacity" {
+            guard let layer = object as? CALayer else { return }
+            let expected = Float(backdropOpacity)
+            if abs(layer.opacity - expected) > 0.001 {
+                layer.opacity = expected
+            }
         } else {
             super.observeValue(forKeyPath: keyPath, of: object, change: change, context: context)
         }
@@ -123,6 +160,7 @@ private final class LiquidGlassContainerView: NSView {
         for layer in observedBackdropLayers {
             layer.removeObserver(self, forKeyPath: windowServerAwareKeyPath)
             layer.removeObserver(self, forKeyPath: scaleKeyPath)
+            layer.removeObserver(self, forKeyPath: "opacity")
         }
         observedBackdropLayers.removeAll()
     }
@@ -147,14 +185,21 @@ public enum LiquidGlassVariant: Int, CaseIterable, Identifiable, Defaults.Serial
         return LiquidGlassVariant(rawValue: clamped) ?? .defaultVariant
     }
 
-    /// Slider semantics: the stored value is a translucency scale, not one
-    /// of Apple's undocumented look-up numbers — left (0) is a fully
-    /// transparent panel, right (19) a fully opaque one. Renderers driven
-    /// by user sliders pass this as the material's opacity and pin the
-    /// private variant itself to ``defaultVariant``, so dragging is
-    /// guaranteed monotonic instead of hopping between 20 unknown looks.
+    /// Raw translucency of the material itself (0…1). The lock-screen
+    /// panels no longer drive this with the slider — fading the frost away
+    /// just deletes the material and looks wrong. They keep the glass at
+    /// full strength and stack a solid backdrop over it instead, which is
+    /// how Apple renders partially transparent materials: the refraction
+    /// stays, the panel milks over.
     public var backgroundOpacity: Double {
         Double(rawValue) / Double(LiquidGlassVariant.supportedRange.upperBound)
+    }
+
+    /// Slider semantics: left (0) is a fully opaque panel, right (19) is
+    /// pure liquid glass. This is the alpha of the solid colour layered on
+    /// top of the glass — the inverse of the slider position.
+    public var panelSolidity: Double {
+        1.0 - backgroundOpacity
     }
 }
 
@@ -236,6 +281,7 @@ public struct LiquidGlassBackground<Content: View>: NSViewRepresentable {
         if let glassType = NSClassFromString("NSGlassEffectView") as? NSView.Type {
             let container = LiquidGlassContainerView(frame: .zero)
             container.translatesAutoresizingMaskIntoConstraints = false
+            container.backdropOpacity = opacity
 
             let glass = glassType.init(frame: .zero)
             glass.translatesAutoresizingMaskIntoConstraints = false
@@ -276,6 +322,7 @@ public struct LiquidGlassBackground<Content: View>: NSViewRepresentable {
             container.glassView = glass
             container.glassOpacityHost = opacityHost
             container.hostingView = hosting
+            print("AtollGlass makeNSView glass opacity=\(String(format: "%.3f", Double(opacity)))")
             container.scheduleBackdropSetup()
             return container
         }
@@ -325,6 +372,11 @@ public struct LiquidGlassBackground<Content: View>: NSViewRepresentable {
         if let glass = container.glassView {
             glass.setValue(cornerRadius, forKey: "cornerRadius")
             callPrivateVariantSetter(on: glass, value: variant.rawValue)
+            if abs(container.backdropOpacity - opacity) > 0.0001 {
+                print("AtollGlass update: opacity \(String(format: "%.3f", Double(container.backdropOpacity))) -> \(String(format: "%.3f", Double(opacity)))")
+            }
+            container.backdropOpacity = opacity
+            container.applyOpacityNow()
         }
         container.glassOpacityHost?.layer?.opacity = Float(opacity)
         if container.glassView != nil {

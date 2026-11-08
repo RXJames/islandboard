@@ -754,6 +754,12 @@ struct ContentView: View {
                 : 0
             )
             .onAppear(perform: {
+                if ProcessInfo.processInfo.environment["ATOLL_DEBUG_PREVIEW"] != nil {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                        LockScreenWidgetPreviewManager.shared.showPreview()
+                        LockScreenPanelManager.shared.showPanel()
+                    }
+                }
                 if coordinator.firstLaunch && !isConnectivityHUDVisible {
                     // Single open during first launch; closeHello() handles the timed close.
                     runAfter(1) {

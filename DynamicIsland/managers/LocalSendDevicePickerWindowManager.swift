@@ -236,8 +236,12 @@ struct LocalSendDevicePickerView: View {
     @ViewBuilder
     private var panelBackground: some View {
         if usesCustomLiquidGlass {
-            LiquidGlassBackground(variant: .defaultVariant, cornerRadius: cornerRadius, opacity: liquidGlassVariant.backgroundOpacity) {
-                Color.black.opacity(0.3)
+            LiquidGlassBackground(variant: .defaultVariant, cornerRadius: cornerRadius, opacity: 1.0) {
+                ZStack {
+                    Color(nsColor: .windowBackgroundColor)
+                        .opacity(liquidGlassVariant.panelSolidity)
+                    Color.black.opacity(0.3)
+                }
             }
         } else if usesStandardLiquidGlass {
             if #available(macOS 26.0, *) {

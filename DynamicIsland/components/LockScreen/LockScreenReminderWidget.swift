@@ -39,11 +39,13 @@ struct LockScreenReminderWidget: View {
                 LiquidGlassBackground(
                     variant: .defaultVariant,
                     cornerRadius: 20,
-                    opacity: lockScreenGlassCustomizationMode == .customLiquid
-                        ? reminderPanelGlassVariant.backgroundOpacity
-                        : 1.0
+                    opacity: 1.0
                 ) {
-                    Color.white.opacity(0.04)
+                    ZStack {
+                        Color(nsColor: .windowBackgroundColor)
+                            .opacity(lockScreenGlassCustomizationMode == .customLiquid ? reminderPanelGlassVariant.panelSolidity : 0)
+                        Color.white.opacity(0.04)
+                    }
                 }
             } else {
                 RoundedRectangle(cornerRadius: 20, style: .continuous)

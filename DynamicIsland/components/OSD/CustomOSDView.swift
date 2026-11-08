@@ -166,9 +166,13 @@ struct CustomOSDView: View {
                     LiquidGlassBackground(
                         variant: .defaultVariant,
                         cornerRadius: 18,
-                        opacity: osdLiquidGlassVariant.backgroundOpacity
+                        opacity: 1.0
                     ) {
-                        Color.white.opacity(0.04)
+                        ZStack {
+                            Color(nsColor: .windowBackgroundColor)
+                                .opacity(osdLiquidGlassVariant.panelSolidity)
+                            Color.white.opacity(0.04)
+                        }
                     }
                 } else {
                     RoundedRectangle(cornerRadius: 18, style: .continuous)
