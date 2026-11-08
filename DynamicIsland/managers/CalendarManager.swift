@@ -416,6 +416,19 @@ class CalendarManager: ObservableObject {
         await calendarService.setReminderCompleted(reminderID: reminderID, completed: completed)
         await updateEvents(force: true)
     }
+
+    /// Creates the event through the service, then force-refreshes so the card
+    /// appears immediately (`EKEventStoreChanged` is throttled and self-writes
+    /// are suppressed for several seconds).
+    func createEvent(title: String, start: Date, end: Date, allDay: Bool, calendarID: String?) async throws {
+        try calendarService.createEvent(title: title, start: start, end: end, allDay: allDay, calendarID: calendarID)
+        await updateEvents(force: true)
+        await updateLockScreenEvents(force: true)
+    }
+
+    func defaultEventCalendarID() -> String? {
+        calendarService.defaultEventCalendarID()
+    }
 }
 
 // MARK: - Event Fetch Limiter

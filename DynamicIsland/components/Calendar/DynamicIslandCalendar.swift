@@ -371,6 +371,7 @@ struct CalendarView: View {
     @ObservedObject private var calendarManager = CalendarManager.shared
     @State private var selectedDate = Date()
     @State private var dateExpanded = false
+    @State private var showNewEvent = false
     @Default(.hideAllDayEvents) private var hideAllDayEvents
     @Default(.hideCompletedReminders) private var hideCompletedReminders
 
@@ -425,6 +426,22 @@ struct CalendarView: View {
                 .opacity(dateExpanded ? 1 : 0)
                 .allowsHitTesting(dateExpanded)
                 .clipped()
+
+                // New-event button: opens the macOS-style editor for the selected day.
+                Button {
+                    withAnimation(.smooth) { showNewEvent.toggle() }
+                } label: {
+                    Image(systemName: "plus")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(width: 22, height: 22)
+                        .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .popover(isPresented: $showNewEvent, arrowEdge: .bottom) {
+                    NewEventPopover(selectedDate: selectedDate)
+                        .environmentObject(vm)
+                }
             }
             .padding(.horizontal, 4)
             .padding(.top, 2)
@@ -483,6 +500,7 @@ struct StandaloneCalendarView: View {
     @State private var selectedDate = Date()
     @State private var displayedMonth = Date()
     @State private var datePickerScrollTarget: Date?
+    @State private var showNewEvent = false
     @Default(.hideAllDayEvents) private var hideAllDayEvents
     @Default(.hideCompletedReminders) private var hideCompletedReminders
 
@@ -625,6 +643,21 @@ struct StandaloneCalendarView: View {
                                 .frame(width: 24, height: 24)
                         }
                         .buttonStyle(.plain)
+
+                        Button {
+                            withAnimation(.smooth) { showNewEvent.toggle() }
+                        } label: {
+                            Image(systemName: "plus")
+                                .font(.system(size: 11, weight: .bold))
+                                .frame(width: 24, height: 24)
+                                .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                        }
+                        .buttonStyle(.plain)
+                        .help("New Event")
+                        .popover(isPresented: $showNewEvent, arrowEdge: .bottom) {
+                            NewEventPopover(selectedDate: selectedDate)
+                                .environmentObject(vm)
+                        }
                     }
                     .foregroundStyle(.white)
                 }
@@ -766,6 +799,184 @@ struct StandaloneCalendarView: View {
             }
             if datePickerScrollTarget == normalizedTarget {
                 datePickerScrollTarget = nil
+            }
+        }
+    }
+}
+
+// MARK: - New event editor
+//
+// Mirrors macOS Calendar's New Event inspector: plain "Add Title" field on top,
+// a date row, a start-time + duration row (hidden for all-day), the
+// "All Day" checkbox, the coloured calendar popup, then Cancel/Add.
+
+struct NewEventPopover: View {
+    @EnvironmentObject var vm: DynamicIslandViewModel
+    @Environment(\.dismiss) private var dismiss
+    @ObservedObject private var calendarManager = CalendarManager.shared
+
+    @State private var title: String
+    @State private var startDate: Date
+    @State private var allDay: Bool
+    @State private var durationMinutes: Int
+    @State private var calendarID: String?
+    @State private var errorMessage: String?
+    @State private var isSaving = false
+    private let autoCloseToken = UUID()
+
+    static let durations = [15, 30, 45, 60, 90, 120, 180]
+
+    init(selectedDate: Date) {
+        _startDate = State(initialValue: Self.defaultStartDate(for: selectedDate))
+        _title = State(initialValue: "")
+        _allDay = State(initialValue: false)
+        _durationMinutes = State(initialValue: 60)
+        _calendarID = State(initialValue: CalendarManager.shared.defaultEventCalendarID())
+    }
+
+    /// Calendar.app starts a new event on the hour; for a future day it uses
+    /// 9:00 AM, which is what clicking a day in Month view gives you.
+    static func defaultStartDate(for selectedDate: Date, now: Date = Date()) -> Date {
+        let calendar = Calendar.current
+        if calendar.isDate(selectedDate, inSameDayAs: now) {
+            return calendar.nextDate(after: now, matching: DateComponents(minute: 0, second: 0), matchingPolicy: .nextTime, direction: .forward) ?? now
+        }
+        return calendar.date(bySettingHour: 9, minute: 0, second: 0, of: selectedDate) ?? calendar.startOfDay(for: selectedDate)
+    }
+
+    static func durationLabel(minutes: Int) -> String {
+        minutes < 60 ? "\(minutes) minutes" : (minutes == 60 ? "1 hour" : "\(minutes / 60) hours")
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            TextField(String(localized: "Add Title"), text: $title)
+                .textFieldStyle(.plain)
+                .font(.headline)
+                .foregroundStyle(.white)
+
+            Divider()
+                .overlay(Color.white.opacity(0.15))
+
+            HStack(spacing: 6) {
+                rowIcon("calendar")
+                DatePicker(selection: $startDate, displayedComponents: .date) { EmptyView() }
+                    .labelsHidden()
+            }
+
+            if !allDay {
+                HStack(spacing: 6) {
+                    rowIcon("clock")
+                    DatePicker(selection: $startDate, displayedComponents: .hourAndMinute) { EmptyView() }
+                        .labelsHidden()
+                    Menu {
+                        ForEach(Self.durations, id: \.self) { minutes in
+                            Button(Self.durationLabel(minutes: minutes)) { durationMinutes = minutes }
+                        }
+                    } label: {
+                        Text(Self.durationLabel(minutes: durationMinutes))
+                            .font(.caption)
+                            .foregroundStyle(.white)
+                    }
+                    .menuStyle(.borderlessButton)
+                    .fixedSize()
+                }
+            }
+
+            Toggle(String(localized: "All Day"), isOn: $allDay)
+                .toggleStyle(.checkbox)
+                .font(.caption)
+
+            HStack(spacing: 6) {
+                rowIcon("circle.fill")
+                Menu {
+                    ForEach(calendarManager.eventCalendars) { calendar in
+                        Button {
+                            calendarID = calendar.id
+                        } label: {
+                            HStack(spacing: 8) {
+                                Circle().fill(Color(nsColor: calendar.color)).frame(width: 8, height: 8)
+                                Text(calendar.title)
+                            }
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        Circle()
+                            .fill(Color(nsColor: selectedCalendarColor))
+                            .frame(width: 8, height: 8)
+                        Text(selectedCalendarTitle)
+                            .font(.caption)
+                            .foregroundStyle(.white)
+                            .lineLimit(1)
+                    }
+                }
+                .menuStyle(.borderlessButton)
+            }
+
+            if let errorMessage {
+                Text(errorMessage)
+                    .font(.caption2)
+                    .foregroundStyle(.red)
+                    .lineLimit(2)
+            }
+
+            HStack {
+                Spacer()
+                Button(String(localized: "Cancel")) { dismiss() }
+                    .keyboardShortcut(.cancelAction)
+                Button(isSaving ? String(localized: "Adding…") : String(localized: "Add")) { save() }
+                    .buttonStyle(.borderedProminent)
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isSaving)
+            }
+            .controlSize(.small)
+        }
+        .padding(14)
+        .frame(width: 260)
+        .background(VisualEffectView(material: .hudWindow, blendingMode: .behindWindow).cornerRadius(12))
+        .onAppear { vm.setAutoCloseSuppression(true, token: autoCloseToken) }
+        .onDisappear { vm.setAutoCloseSuppression(false, token: autoCloseToken) }
+        .onHover { hovering in vm.setAutoCloseSuppression(hovering, token: autoCloseToken) }
+    }
+
+    private var selectedCalendar: CalendarModel? {
+        calendarManager.eventCalendars.first { $0.id == calendarID } ?? calendarManager.eventCalendars.first
+    }
+
+    private var selectedCalendarTitle: String {
+        selectedCalendar?.title ?? String(localized: "Default")
+    }
+
+    private var selectedCalendarColor: NSColor {
+        selectedCalendar?.color ?? .systemRed
+    }
+
+    private func rowIcon(_ name: String) -> some View {
+        Image(systemName: name)
+            .font(.system(size: 11))
+            .foregroundStyle(Color(white: 0.65))
+            .frame(width: 16)
+    }
+
+    private func save() {
+        isSaving = true
+        let calendar = Calendar.current
+        let start = startDate
+        let end = allDay ? calendar.startOfDay(for: start) : start.addingTimeInterval(TimeInterval(durationMinutes * 60))
+        Task {
+            do {
+                try await calendarManager.createEvent(
+                    title: title.trimmingCharacters(in: .whitespacesAndNewlines),
+                    start: start,
+                    end: end,
+                    allDay: allDay,
+                    calendarID: calendarID
+                )
+                dismiss()
+            } catch {
+                errorMessage = error.localizedDescription
+                isSaving = false
             }
         }
     }

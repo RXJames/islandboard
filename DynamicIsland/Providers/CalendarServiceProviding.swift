@@ -23,12 +23,26 @@
 import Foundation
 import EventKit
 
+enum CalendarWriteError: LocalizedError {
+    case noAccess
+    case noCalendar
+
+    var errorDescription: String? {
+        switch self {
+        case .noAccess: return String(localized: "Calendar write access is not granted")
+        case .noCalendar: return String(localized: "No calendar available for new events")
+        }
+    }
+}
+
 protocol CalendarServiceProviding {
     func requestAccess() async -> Bool
     func requestAccess(to type: EKEntityType) async -> Bool
     func calendars() async -> [CalendarModel]
     func events(from start: Date, to end: Date, calendars: [String]) async -> [EventModel]
     func setReminderCompleted(reminderID: String, completed: Bool) async
+    func createEvent(title: String, start: Date, end: Date, allDay: Bool, calendarID: String?) throws
+    func defaultEventCalendarID() -> String?
 }
 
 class CalendarService: CalendarServiceProviding {
@@ -138,6 +152,40 @@ class CalendarService: CalendarServiceProviding {
         } catch {
             print("Failed to update reminder completion: \(error)")
         }
+    }
+
+    func defaultEventCalendarID() -> String? {
+        store.defaultCalendarForNewEvents?.calendarIdentifier
+    }
+
+    /// Creates a real Calendar event, exactly like Calendar.app's New Event:
+    /// all-day events span whole days (exclusive end), timed events keep their
+    /// start/end instants in the local time zone.
+    func createEvent(title: String, start: Date, end: Date, allDay: Bool, calendarID: String?) throws {
+        guard hasAccess(to: .event) else { throw CalendarWriteError.noAccess }
+        let calendar: EKCalendar
+        if let calendarID, let match = store.calendars(for: .event).first(where: { $0.calendarIdentifier == calendarID }) {
+            calendar = match
+        } else if let fallback = store.defaultCalendarForNewEvents {
+            calendar = fallback
+        } else {
+            throw CalendarWriteError.noCalendar
+        }
+
+        let day = Calendar.current
+        let event = EKEvent(eventStore: store)
+        event.calendar = calendar
+        event.title = title
+        if allDay {
+            let dayStart = day.startOfDay(for: start)
+            event.isAllDay = true
+            event.startDate = dayStart
+            event.endDate = day.date(byAdding: .day, value: 1, to: dayStart) ?? dayStart.addingTimeInterval(86_400)
+        } else {
+            event.startDate = start
+            event.endDate = max(end, start.addingTimeInterval(60))
+        }
+        try store.save(event, span: .thisEvent, commit: true)
     }
 }
 
