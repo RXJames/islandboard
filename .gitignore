@@ -165,3 +165,7 @@ implementation_plan.md
 walkthrough.md
 TemporaryAssets/
 *.profraw
+
+# Rust data layer build artifacts
+atoll-core/target/
+atoll-core/dist/
