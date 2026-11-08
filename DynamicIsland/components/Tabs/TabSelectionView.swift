@@ -250,12 +250,15 @@ struct TabSelectionView: View {
         ZStack(alignment: .topLeading) {
             HStack(spacing: tabSpacing) {
                 ForEach(displayOrder, id: \.self) { id in
-                    if id == draggedTabID {
-                        // The gap the neighbours part around.
-                        Color.clear
-                            .frame(width: gapWidth, height: 26)
-                    } else if let tab = tabs.first(where: { $0.id == id }) {
+                    // The dragged tab MUST stay in the hierarchy as the
+                    // exact same view: its DragGesture owns the session, and
+                    // swapping it for another branch (e.g. a gap) destroys
+                    // the gesture mid-drag — the drag freezes, onEnded never
+                    // fires and the reorder veto leaks, sticking the notch
+                    // open. It rides the slot as an invisible host instead.
+                    if let tab = tabs.first(where: { $0.id == id }) {
                         tabButton(tab)
+                            .opacity(draggedTabID == tab.id ? 0 : 1)
                     }
                 }
             }
@@ -321,7 +324,6 @@ struct TabSelectionView: View {
             }
         )
         .scaleEffect(floating ? 1.15 : 1)
-        .matchedGeometryEffect(id: "floating-\(tab.id)", in: animation, isSource: draggedTabID != tab.id)
 
         if floating {
             base
