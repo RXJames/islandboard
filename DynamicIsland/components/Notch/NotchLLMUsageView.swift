@@ -177,11 +177,27 @@ struct NotchLLMUsageView: View {
                         }
 
                         if let errorMessage = account.errorMessage,
-                           account.balanceQuota == nil {
+                           account.balanceQuota == nil, account.balanceText == nil {
                             Text(errorMessage)
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
                                 .lineLimit(2)
+                        } else if let balanceText = account.balanceText {
+                            // DeepSeek-style card: money arrives pre-formatted;
+                            // the API exposes no request-stat routes to fill the other rows.
+                            balanceTextRow("Balance", balanceText, prominent: true)
+                            if let errorMessage = account.errorMessage {
+                                Text(errorMessage)
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                            }
+                        } else if !account.serverRows.isEmpty {
+                            // Inference-server card: pre-formatted label/value rows
+                            // (prefill/decode tok/s, cumulative tokens).
+                            ForEach(account.serverRows) { row in
+                                balanceTextRow(row.label, row.value, prominent: row.label == "Decode")
+                            }
                         } else {
                             quotaRow("Balance", account.balanceQuota, prominent: true)
                             quotaRow("Used", account.usedQuota)
@@ -221,6 +237,19 @@ struct NotchLLMUsageView: View {
                 .foregroundStyle(.secondary)
                 .frame(width: 44, alignment: .leading)
             Text(value.map(quota) ?? "-")
+                .font(.system(size: prominent ? 15 : 11, weight: prominent ? .bold : .semibold, design: .rounded))
+                .monospacedDigit()
+            Spacer()
+        }
+    }
+
+    private func balanceTextRow(_ label: String, _ value: String, prominent: Bool = false) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Text(label)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .frame(width: 44, alignment: .leading)
+            Text(value)
                 .font(.system(size: prominent ? 15 : 11, weight: prominent ? .bold : .semibold, design: .rounded))
                 .monospacedDigit()
             Spacer()

@@ -8129,7 +8129,7 @@ struct StatsSettings: View {
                 } header: {
                     Text("New API Accounts")
                 } footer: {
-                    Text("API keys are stored in the macOS Keychain. Balance and usage are shown in the quota units reported by your New API server.")
+                    Text("API keys are stored in the macOS Keychain. Gateway accounts report balance and usage in quota units; DeepSeek accounts report the account balance; inference servers show prefill/decode speed and token totals from their /metrics route.")
                         .multilineTextAlignment(.trailing)
                         .foregroundStyle(.secondary)
                         .font(.caption)
@@ -8389,6 +8389,7 @@ private struct NewAPIAccountEditor: View {
     @State private var name: String
     @State private var baseURL: String
     @State private var apiKey: String
+    @State private var kind: NewAPIKind
     @State private var errorMessage: String?
 
     init(account: NewAPIAccount?, onSave: @escaping (NewAPIAccount, String) throws -> Void) {
@@ -8397,6 +8398,7 @@ private struct NewAPIAccountEditor: View {
         _name = State(initialValue: account?.name ?? "")
         _baseURL = State(initialValue: account?.baseURL ?? "https://")
         _apiKey = State(initialValue: account.map { NewAPIKeychain.read(accountID: $0.id) ?? "" } ?? "")
+        _kind = State(initialValue: account?.kind ?? .newAPI)
     }
 
     var body: some View {
@@ -8405,6 +8407,11 @@ private struct NewAPIAccountEditor: View {
                 .font(.title3.weight(.semibold))
 
             Form {
+                Picker("Type", selection: $kind) {
+                    ForEach(NewAPIKind.allCases) { option in
+                        Text(option.displayName).tag(option)
+                    }
+                }
                 TextField("Account name", text: $name)
                 TextField("Base URL", text: $baseURL)
                     .textContentType(.URL)
@@ -8442,7 +8449,8 @@ private struct NewAPIAccountEditor: View {
         let updated = NewAPIAccount(
             id: account?.id ?? UUID(),
             name: name,
-            baseURL: baseURL
+            baseURL: baseURL,
+            kind: kind
         )
         do {
             try onSave(updated, apiKey)

@@ -2,15 +2,50 @@ import Foundation
 import Defaults
 import Security
 
+/// Which quota dialect the account speaks. `newAPI` is the new-api/one-api
+/// gateway (`/api/user/self`, `{success,data}` envelope); `deepseek` is the
+/// DeepSeek official API (`/user/balance`, plain JSON with decimal-string amounts);
+/// `server` is a self-hosted inference server exposing a Prometheus `/metrics`
+/// route with vllm/sushi token counters (prefill & decode throughput, totals).
+enum NewAPIKind: String, Codable, CaseIterable, Identifiable {
+    case newAPI
+    case deepSeek
+    case server
+
+    var id: String { rawValue }
+    var displayName: String {
+        switch self {
+        case .newAPI: return "New API gateway"
+        case .deepSeek: return "DeepSeek"
+        case .server: return "Inference server"
+        }
+    }
+}
+
 struct NewAPIAccount: Codable, Defaults.Serializable, Equatable, Identifiable {
     let id: UUID
     var name: String
     var baseURL: String
+    var kind: NewAPIKind
 
-    init(id: UUID = UUID(), name: String, baseURL: String) {
+    init(id: UUID = UUID(), name: String, baseURL: String, kind: NewAPIKind = .newAPI) {
         self.id = id
         self.name = name
         self.baseURL = baseURL
+        self.kind = kind
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, name, baseURL, kind
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        baseURL = try container.decode(String.self, forKey: .baseURL)
+        // Rows stored before DeepSeek support exist without a kind; they are gateways.
+        kind = try container.decodeIfPresent(NewAPIKind.self, forKey: .kind) ?? .newAPI
     }
 }
 
@@ -25,6 +60,12 @@ struct NewAPIAccountSnapshot: Equatable, Identifiable {
     let currentRPM: Int?
     let currentTPM: Int?
     let errorMessage: String?
+    /// Pre-formatted balance for dialects that report money as decimal strings
+    /// (DeepSeek), e.g. "¥110.00". Gateway accounts use `balanceQuota` instead.
+    var balanceText: String? = nil
+    /// Pre-formatted label/value rows for dialects whose card is not quota-shaped
+    /// (inference server: prefill/decode tok/s, token totals).
+    var serverRows: [ServerMetricRow] = []
 
     var isSuccessful: Bool { errorMessage == nil }
 }
@@ -146,6 +187,61 @@ enum NewAPIStoreError: LocalizedError {
     }
 }
 
+struct ServerMetricRow: Equatable, Identifiable {
+    let label: String
+    let value: String
+    var id: String { label }
+}
+
+/// Minimal Prometheus text-exposition parser: samples without labels, and per-name
+/// sums for label-split counters. NaN/Inf samples are dropped.
+enum PrometheusText {
+    static func parse(_ text: String) -> [String: Double] {
+        var out: [String: Double] = [:]
+        for rawLine in text.split(separator: "\n") {
+            let line = rawLine.trimmingCharacters(in: .whitespaces)
+            if line.isEmpty || line.hasPrefix("#") { continue }
+            guard let space = line.firstIndex(where: { $0 == " " || $0 == "\t" }) else { continue }
+            let namePart = String(line[..<space])
+            let valuePart = line[line.index(after: space)...].trimmingCharacters(in: .whitespaces)
+            // Sample identity is the name without labels; labeled series of the same
+            // counter are summed, which is what totals want.
+            let name = namePart.prefix(while: { $0 != "{" })
+            guard let value = Double(valuePart), value.isFinite else { continue }
+            out[String(name), default: 0] += value
+        }
+        return out
+    }
+}
+
+/// Window rates from two adjacent `/metrics` samples. Prefill uses the server's
+/// own processed-token counter (mean over the window — an idle window yields nil);
+/// decode uses the live generation gauge, which also ticks for in-flight requests.
+actor ServerRates {
+    static let shared = ServerRates()
+
+    private struct Sample { let date: Date; let prefill: Double?; let decode: Double? }
+    private var last: [UUID: Sample] = [:]
+
+    func reset(accountID: UUID) { last[accountID] = nil }
+
+    /// Returns (prefill tok/s, decode tok/s) — nil when no work happened in the
+    /// window (or on the very first sample).
+    func rates(accountID: UUID, now: Date, prefillTotal: Double?, decodeLive: Double?) -> (prefill: Double?, decode: Double?) {
+        let previous = last[accountID]
+        let sample = Sample(date: now, prefill: prefillTotal, decode: decodeLive)
+        last[accountID] = sample
+        guard let previous, now.timeIntervalSince(previous.date) > 1 else { return (nil, nil) }
+        let dt = now.timeIntervalSince(previous.date)
+        func rate(_ before: Double?, _ after: Double?) -> Double? {
+            guard let before, let after, after >= before else { return nil }
+            let delta = after - before
+            return delta > 0 ? delta / dt : nil
+        }
+        return (rate(previous.prefill, sample.prefill), rate(previous.decode, sample.decode))
+    }
+}
+
 struct NewAPIClient {
     typealias RequestHandler = (URLRequest) async throws -> (Data, URLResponse)
 
@@ -179,6 +275,12 @@ struct NewAPIClient {
     func fetchAccount(_ account: NewAPIAccount, apiKey: String, now: Date, calendar: Calendar = .current) async throws -> NewAPIAccountSnapshot {
         guard let baseURL = Self.normalizedBaseURL(account.baseURL) else {
             throw NewAPIClientError.invalidBaseURL
+        }
+        if account.kind == .deepSeek {
+            return try await fetchDeepSeekAccount(account, baseURL: baseURL, apiKey: apiKey)
+        }
+        if account.kind == .server {
+            return try await fetchServerAccount(account, baseURL: baseURL, apiKey: apiKey, now: now)
         }
         let selfData = try await request(path: "/api/user/self", baseURL: baseURL, apiKey: apiKey)
         let user = try decode(NewAPIEnvelope<NewAPIUser>.self, from: selfData)
@@ -235,6 +337,120 @@ struct NewAPIClient {
         )
     }
 
+    /// DeepSeek official API: `GET /user/balance` returns plain JSON with
+    /// decimal-string money amounts. The API exposes no per-request stat route,
+    /// so today/week/RPM/TPM stay nil and the card shows the balance alone.
+    private func fetchDeepSeekAccount(_ account: NewAPIAccount, baseURL: URL, apiKey: String) async throws -> NewAPIAccountSnapshot {
+        var request = URLRequest(url: baseURL.appendingPathComponent("user/balance"))
+        request.httpMethod = "GET"
+        request.timeoutInterval = 15
+        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        let (data, response) = try await requestHandler(request)
+        guard let http = response as? HTTPURLResponse else { throw NewAPIClientError.httpFailure }
+        guard (200..<300).contains(http.statusCode) else {
+            // Surface DeepSeek's own message (invalid key, rate limit…) instead of a bare "request failed".
+            if let err = try? JSONDecoder().decode(DeepSeekErrorBody.self, from: data), let message = err.error?.message {
+                throw NewAPIClientError.providerError(message)
+            }
+            throw NewAPIClientError.httpFailure
+        }
+        let balance = try decode(DeepSeekBalanceResponse.self, from: data)
+        let infos = balance.balanceInfos ?? []
+        let balanceText: String?
+        if infos.isEmpty {
+            balanceText = nil
+        } else {
+            let symbols = ["CNY": "¥", "USD": "$"]
+            let parts = infos.compactMap { info -> String? in
+                guard let total = info.totalBalance else { return nil }
+                let symbol = symbols[info.currency ?? "CNY"] ?? ""
+                return symbol + total
+            }
+            balanceText = parts.isEmpty ? nil : parts.joined(separator: " ")
+        }
+        var errorMessage: String?
+        if balance.isAvailable == false {
+            errorMessage = "Balance service unavailable"
+            if let reason = balance.unavailableReason, !reason.isEmpty {
+                errorMessage = "\(errorMessage!): \(reason)"
+            }
+        } else if balanceText == nil {
+            errorMessage = "No balance reported"
+        }
+        return NewAPIAccountSnapshot(
+            id: account.id,
+            name: account.name,
+            balanceQuota: nil,
+            usedQuota: nil,
+            requestCount: nil,
+            todayQuota: nil,
+            weekQuota: nil,
+            currentRPM: nil,
+            currentTPM: nil,
+            errorMessage: errorMessage,
+            balanceText: balanceText
+        )
+    }
+
+    /// Inference server: reads `/metrics` (Prometheus) and maps the sushi/vllm
+    /// token counters to card rows. Speeds are window rates between consecutive
+    /// refresh samples (`ServerRates`); totals are cumulative since server start.
+    private func fetchServerAccount(_ account: NewAPIAccount, baseURL: URL, apiKey: String, now: Date) async throws -> NewAPIAccountSnapshot {
+        let data = try await request(path: "/metrics", baseURL: baseURL, apiKey: apiKey)
+        guard let text = String(data: data, encoding: .utf8) else {
+            throw NewAPIClientError.invalidResponse
+        }
+        let metrics = PrometheusText.parse(text)
+        guard metrics["vllm:prompt_tokens_total"] != nil || metrics["vllm:generation_tokens_total"] != nil else {
+            throw NewAPIClientError.notInferenceServer
+        }
+
+        let rates = await ServerRates.shared.rates(
+            accountID: account.id,
+            now: now,
+            prefillTotal: metrics["sushi:prefill_tokens_total"],
+            decodeLive: metrics["sushi:generation_tokens_live"]
+        )
+
+        var rows: [ServerMetricRow] = []
+        rows.append(ServerMetricRow(label: "Prefill", value: rates.prefill.map { Self.speed($0) } ?? "idle"))
+        rows.append(ServerMetricRow(label: "Decode", value: rates.decode.map { Self.speed($0) } ?? "idle"))
+        rows.append(ServerMetricRow(label: "Input", value: metrics["vllm:prompt_tokens_total"].map(Self.compactTokens) ?? "-"))
+        rows.append(ServerMetricRow(label: "Output", value: metrics["vllm:generation_tokens_total"].map(Self.compactTokens) ?? "-"))
+        if let requests = metrics["vllm:request_success_total"] {
+            rows.append(ServerMetricRow(label: "Requests", value: Self.compactTokens(requests)))
+        }
+        if let gpu = metrics["sushi:gpu_utilization_pct"] {
+            rows.append(ServerMetricRow(label: "GPU", value: String(format: "%.0f%%", gpu)))
+        }
+        return NewAPIAccountSnapshot(
+            id: account.id,
+            name: account.name,
+            balanceQuota: nil,
+            usedQuota: nil,
+            requestCount: nil,
+            todayQuota: nil,
+            weekQuota: nil,
+            currentRPM: nil,
+            currentTPM: nil,
+            errorMessage: nil,
+            serverRows: rows
+        )
+    }
+
+    static func speed(_ tokPerSec: Double) -> String {
+        tokPerSec >= 100 ? String(format: "%.0f tok/s", tokPerSec) : String(format: "%.1f tok/s", tokPerSec)
+    }
+
+    static func compactTokens(_ n: Double) -> String {
+        switch n {
+        case 1_000_000...: return String(format: "%.1fM", n / 1_000_000)
+        case 1_000...: return String(format: "%.1fk", n / 1_000)
+        default: return String(Int(n))
+        }
+    }
+
     private func fetchStat(baseURL: URL, apiKey: String, start: Int64, end: Int64) async throws -> NewAPIStat {
         var components = URLComponents(url: baseURL.appendingPathComponent("api/log/self/stat"), resolvingAgainstBaseURL: false)
         components?.queryItems = [
@@ -275,6 +491,39 @@ struct NewAPIClient {
 private struct NewAPIEnvelope<T: Decodable>: Decodable {
     let success: Bool
     let data: T?
+}
+
+/// `GET /user/balance` — https://api-docs.deepseek.com/api/get-user-balance
+struct DeepSeekBalanceResponse: Decodable {
+    let isAvailable: Bool?
+    let balanceInfos: [BalanceInfo]?
+    let unavailableReason: String?
+
+    struct BalanceInfo: Decodable {
+        let currency: String?
+        let totalBalance: String?
+        let grantedBalance: String?
+        let toppedUpBalance: String?
+
+        enum CodingKeys: String, CodingKey {
+            case currency
+            case totalBalance = "total_balance"
+            case grantedBalance = "granted_balance"
+            case toppedUpBalance = "topped_up_balance"
+        }
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case isAvailable = "is_available"
+        case balanceInfos = "balance_infos"
+        case unavailableReason = "unavailable_reason"
+    }
+}
+
+/// OpenAI-style error body DeepSeek returns on auth/rate-limit failures.
+private struct DeepSeekErrorBody: Decodable {
+    struct Inner: Decodable { let message: String? }
+    let error: Inner?
 }
 
 struct NewAPIUser: Decodable, Equatable {
@@ -353,6 +602,8 @@ enum NewAPIClientError: LocalizedError {
     case httpFailure
     case apiRequestFailed
     case invalidResponse
+    case providerError(String)
+    case notInferenceServer
 
     var errorDescription: String? {
         switch self {
@@ -361,6 +612,8 @@ enum NewAPIClientError: LocalizedError {
         case .httpFailure: return "New API request failed"
         case .apiRequestFailed: return "New API returned an unsuccessful response"
         case .invalidResponse: return "New API returned an invalid response"
+        case .providerError(let message): return message
+        case .notInferenceServer: return "No inference-server token metrics at this URL"
         }
     }
 }

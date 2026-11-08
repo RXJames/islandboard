@@ -195,6 +195,133 @@ final class NewAPIUsageTests: XCTestCase {
         XCTAssertEqual(error, "API key not configured")
         XCTAssertFalse(error?.contains("secret") == true)
     }
+
+    func testDeepSeekKindFetchesUserBalanceOnly() async throws {
+        let recorder = RequestRecorder()
+        let client = NewAPIClient { request in
+            recorder.append(request)
+            XCTAssertEqual(request.url?.path, "/user/balance")
+            let body = #"{"is_available":true,"balance_infos":[{"currency":"CNY","total_balance":"110.00","granted_balance":"10.00","topped_up_balance":"100.00"}]}"#
+            return (Data(body.utf8), HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+        }
+        let account = NewAPIAccount(name: "DS", baseURL: "https://api.deepseek.com", kind: .deepSeek)
+
+        let snapshot = try await client.fetchAccount(account, apiKey: "sk-test", now: Date())
+
+        XCTAssertEqual(snapshot.balanceText, "¥110.00")
+        XCTAssertNil(snapshot.balanceQuota)
+        XCTAssertNil(snapshot.errorMessage)
+        XCTAssertNil(snapshot.todayQuota)
+        XCTAssertEqual(recorder.requests.count, 1) // no /api/log/self/stat fan-out
+        XCTAssertEqual(recorder.requests.first?.value(forHTTPHeaderField: "Authorization"), "Bearer sk-test")
+    }
+
+    func testDeepSeekErrorBodySurfacesServerMessage() async throws {
+        let client = NewAPIClient { request in
+            let body = #"{"error":{"message":"Authentication Fails, Your api key: ****alid","type":"authentication_error"}}"#
+            return (Data(body.utf8), HTTPURLResponse(url: request.url!, statusCode: 401, httpVersion: nil, headerFields: nil)!)
+        }
+        let account = NewAPIAccount(name: "DS", baseURL: "https://api.deepseek.com", kind: .deepSeek)
+
+        do {
+            _ = try await client.fetchAccount(account, apiKey: "bad", now: Date())
+            XCTFail("Expected a thrown error")
+        } catch let NewAPIClientError.providerError(message) {
+            XCTAssertEqual(message, "Authentication Fails, Your api key: ****alid")
+        }
+    }
+
+    func testDeepSeekUnavailableBalanceReportsReason() async throws {
+        let client = NewAPIClient { request in
+            let body = #"{"is_available":false,"unavailable_reason":"topped-up users only","balance_infos":[]}"#
+            return (Data(body.utf8), HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+        }
+        let account = NewAPIAccount(name: "DS", baseURL: "https://api.deepseek.com", kind: .deepSeek)
+
+        let snapshot = try await client.fetchAccount(account, apiKey: "sk", now: Date())
+
+        XCTAssertNil(snapshot.balanceText)
+        XCTAssertEqual(snapshot.errorMessage, "Balance service unavailable: topped-up users only")
+    }
+
+    func testLegacyStoredAccountWithoutKindDecodesAsGateway() throws {
+        // Rows persisted before DeepSeek support must keep speaking the gateway dialect.
+        let json = #"{"id":"3411D0CB-9CAE-4C23-87C8-F3D44AC8A08A","name":"DS","baseURL":"https://api.deepseek.com"}"#
+        let account = try JSONDecoder().decode(NewAPIAccount.self, from: Data(json.utf8))
+        XCTAssertEqual(account.kind, .newAPI)
+    }
+
+    func testPrometheusParserSumsLabeledCountersAndDropsNonFinite() {
+        let text = """
+        # HELP vllm:prompt_tokens_total Total prompt tokens processed
+        # TYPE vllm:prompt_tokens_total counter
+        vllm:prompt_tokens_total 66929593
+        vllm:request_success_total{status="stop"} 600
+        vllm:request_success_total{status="length"} 38
+        sushi:gpu_utilization_pct NaN
+        broken line without value
+        """
+        let metrics = PrometheusText.parse(text)
+        XCTAssertEqual(metrics["vllm:prompt_tokens_total"], 66_929_593)
+        XCTAssertEqual(metrics["vllm:request_success_total"], 638)
+        XCTAssertNil(metrics["sushi:gpu_utilization_pct"]) // NaN dropped
+    }
+
+    func testServerKindBuildsRowsFromMetrics() async throws {
+        let client = NewAPIClient { request in
+            XCTAssertEqual(request.url?.path, "/metrics")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer sk-srv")
+            let body = """
+            vllm:prompt_tokens_total 1000
+            vllm:generation_tokens_total 200
+            sushi:prefill_tokens_total 800
+            sushi:generation_tokens_live 250
+            vllm:request_success_total 9
+            sushi:gpu_utilization_pct 42
+            """
+            return (Data(body.utf8), HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+        }
+        let accountID = UUID()
+        let account = NewAPIAccount(id: accountID, name: "Mini", baseURL: "http://192.168.0.187:11234", kind: .server)
+
+        // First sample: totals present, no window rate yet.
+        let first = try await client.fetchAccount(account, apiKey: "sk-srv", now: Date(timeIntervalSince1970: 1_000_000))
+        XCTAssertNil(first.errorMessage)
+        XCTAssertEqual(first.serverRows.first { $0.label == "Input" }?.value, "1.0k")
+        XCTAssertEqual(first.serverRows.first { $0.label == "GPU" }?.value, "42%")
+        XCTAssertEqual(first.serverRows.first { $0.label == "Prefill" }?.value, "idle")
+
+        // Second sample 10 s later: 200 prefill tokens and 100 decode tokens in the window.
+        let client2 = NewAPIClient { request in
+            let body = """
+            vllm:prompt_tokens_total 1100
+            vllm:generation_tokens_total 250
+            sushi:prefill_tokens_total 1000
+            sushi:generation_tokens_live 350
+            vllm:request_success_total 10
+            sushi:gpu_utilization_pct 66
+            """
+            return (Data(body.utf8), HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+        }
+        let second = try await client2.fetchAccount(account, apiKey: "sk-srv", now: Date(timeIntervalSince1970: 1_000_010))
+        XCTAssertEqual(second.serverRows.first { $0.label == "Prefill" }?.value, "20.0 tok/s") // (1000-800)/10
+        XCTAssertEqual(second.serverRows.first { $0.label == "Decode" }?.value, "10.0 tok/s")  // (350-250)/10
+        await ServerRates.shared.reset(accountID: accountID)
+    }
+
+    func testServerKindRejectsNonMetricsServer() async throws {
+        let client = NewAPIClient { request in
+            let body = "<html>nginx</html>"
+            return (Data(body.utf8), HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+        }
+        let account = NewAPIAccount(name: "Wrong", baseURL: "http://example.com", kind: .server)
+        do {
+            _ = try await client.fetchAccount(account, apiKey: "k", now: Date())
+            XCTFail("Expected notInferenceServer")
+        } catch NewAPIClientError.notInferenceServer {
+            // expected
+        }
+    }
 }
 
 private final class RequestRecorder: @unchecked Sendable {
