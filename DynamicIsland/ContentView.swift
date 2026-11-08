@@ -1383,7 +1383,14 @@ struct ContentView: View {
 
     @ViewBuilder
     func DynamicIslandFaceAnimation() -> some View {
-        let sideSize = max(0, vm.effectiveClosedNotchHeight - 12)
+        // The pet's box follows the notch's face: the closed notch is a
+        // rounded trapezoid, so this uses its area (width * height, square
+        // rooted back into a side length) rather than just the height, plus
+        // a flat bump so the animal reads at a glance. Height still caps
+        // the box so the pet cannot poke out of a tall-and-narrow notch.
+        let area = max(1, vm.closedNotchSize.width * vm.effectiveClosedNotchHeight)
+        let areaSide = (area.squareRoot() * 1.15).rounded()
+        let sideSize = min(max(0, vm.effectiveClosedNotchHeight - 6), max(24, areaSide))
         HStack {
             HStack {
                 Rectangle()
@@ -1391,8 +1398,8 @@ struct ContentView: View {
                     .frame(width: sideSize, height: sideSize)
                 Rectangle()
                     .fill(.black)
-                    .frame(width: vm.closedNotchSize.width - 20)
-                IdleAnimationView()
+                    .frame(width: max(0, vm.closedNotchSize.width - 20 - sideSize * 2))
+                IdleAnimationView(fittingSize: CGSize(width: sideSize, height: sideSize))
                     .frame(width: sideSize, height: sideSize)
             }
         }.frame(height: vm.effectiveClosedNotchHeight + (isHovering ? 8 : 0), alignment: .center)

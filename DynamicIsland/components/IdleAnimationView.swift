@@ -24,11 +24,15 @@ import Defaults
 struct IdleAnimationView: View {
     @Default(.selectedIdleAnimation) var selectedAnimation
     @Default(.animationTransformOverrides) var overrides
-    
+    /// The box the pet is laid out in (from the notch's face). Non-zero
+    /// sizes scale the animation up or down to fit while keeping its
+    /// aspect ratio and the user's offset/rotation/opacity intact.
+    var fittingSize: CGSize = .zero
+
     var body: some View {
         Group {
             if let animation = selectedAnimation {
-                AnimationContentView(animation: animation)
+                AnimationContentView(animation: animation, fittingSize: fittingSize)
                     .id("\(animation.id)-\(overrides[animation.id.uuidString]?.hashValue ?? 0)")  // Force recreation when override changes
             } else {
                 // No animation selected
@@ -41,14 +45,26 @@ struct IdleAnimationView: View {
 /// Internal view that renders the actual animation content
 private struct AnimationContentView: View {
     let animation: CustomIdleAnimation
-    
+    var fittingSize: CGSize = .zero
+
+    /// Scale that makes the animation's own crop box fit the notch-derived
+    /// frame. `1` when no box is given (previews, editors) so every other
+    /// call site keeps the hand-tuned size.
+    private func fittedSize(config: AnimationTransformConfig) -> CGSize {
+        let intrinsic = CGSize(width: max(1, config.cropWidth * config.scale),
+                               height: max(1, config.cropHeight * config.scale))
+        guard fittingSize.width > 1, fittingSize.height > 1 else { return intrinsic }
+        let fit = min(fittingSize.width / intrinsic.width, fittingSize.height / intrinsic.height)
+        return CGSize(width: intrinsic.width * fit, height: intrinsic.height * fit)
+    }
+
     var body: some View {
         let config = animation.getTransformConfig()
-        
+        let size = fittedSize(config: config)
         // Debug logging
         let _ = print("🎨 [IdleAnimationView] Rendering animation: \(animation.name)")
         let _ = print("🎨 [IdleAnimationView] Config: scale=\(config.scale), offset=(\(config.offsetX), \(config.offsetY)), opacity=\(config.opacity)")
-        
+
         switch animation.source {
         case .lottieFile(let url):
             LottieView(state: LUStateData(
@@ -57,14 +73,12 @@ private struct AnimationContentView: View {
                 loopMode: config.loopMode.lottieLoopMode
             ))
             .id(animation.id)  // Force reload when animation changes
-            .frame(
-                width: config.cropWidth * config.scale,
-                height: config.cropHeight * config.scale
-            )
-            .offset(x: config.offsetX, y: config.offsetY)
+            .frame(width: size.width, height: size.height)
+            .offset(x: config.offsetX * size.width / max(1, config.cropWidth * config.scale),
+                    y: config.offsetY * size.height / max(1, config.cropHeight * config.scale))
             .rotationEffect(.degrees(config.rotation))
             .opacity(config.opacity)
-            .padding(.bottom, config.paddingBottom)
+            .padding(.bottom, config.paddingBottom * size.height / max(1, config.cropHeight * config.scale))
             .clipped()
             
         case .lottieURL(let url):
@@ -74,14 +88,12 @@ private struct AnimationContentView: View {
                 loopMode: config.loopMode.lottieLoopMode
             ))
             .id(animation.id)  // Force reload when animation changes
-            .frame(
-                width: config.cropWidth * config.scale,
-                height: config.cropHeight * config.scale
-            )
-            .offset(x: config.offsetX, y: config.offsetY)
+            .frame(width: size.width, height: size.height)
+            .offset(x: config.offsetX * size.width / max(1, config.cropWidth * config.scale),
+                    y: config.offsetY * size.height / max(1, config.cropHeight * config.scale))
             .rotationEffect(.degrees(config.rotation))
             .opacity(config.opacity)
-            .padding(.bottom, config.paddingBottom)
+            .padding(.bottom, config.paddingBottom * size.height / max(1, config.cropHeight * config.scale))
             .clipped()
         }
     }
