@@ -138,7 +138,7 @@ struct IdleAnimationsSettingsSection: View {
                             set: { idlePetSizeScale = CGFloat($0) }
                         ), in: 0.4...1.0)
                         .disabled(selectedIdleAnimation == nil)
-                        Text("100% makes the pet sit flush against the notch edge; it never covers the camera cutout.")
+                        Text("100% makes the pet touch the notch's edge without exceeding it.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }

@@ -1441,7 +1441,7 @@ struct ContentView: View {
                         .frame(width: sideSize, height: sideSize)
                 }
             }
-        }.frame(height: vm.effectiveClosedNotchHeight + (isHovering ? 8 : 0), alignment: .center)
+        }.frame(height: vm.effectiveClosedNotchHeight + (isHovering ? 8 : 0), alignment: .bottom)
     }
 
     @ViewBuilder

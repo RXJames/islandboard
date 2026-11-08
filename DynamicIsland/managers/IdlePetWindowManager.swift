@@ -27,13 +27,13 @@ import Defaults
 enum IdlePetGeometry {
     /// Edge length of the box the pet is drawn in on the notch's face.
     /// Driven by the notch's area (square-rooted back into a length) with a
-    /// flat bump, capped by the notch height so the pet sits flush against
-    /// the face edge without crowding the camera cutout, then multiplied by
-    /// the user's size slider (1.0 = as large as the cap allows).
+    /// flat bump, capped at the notch height so the pet touches the face
+    /// edge without ever exceeding it, then multiplied by the user's size
+    /// slider (1.0 = flush with the edge).
     static func faceSide(notchWidth: CGFloat, notchHeight: CGFloat, scale: CGFloat) -> CGFloat {
         guard notchWidth > 0, notchHeight > 0 else { return 0 }
         let areaSide = (notchWidth * notchHeight).squareRoot() * 1.15
-        let cap = min(max(0, notchHeight - 6), max(24, areaSide))
+        let cap = min(notchHeight, max(24, areaSide))
         return cap * max(0.1, scale)
     }
 
@@ -108,6 +108,8 @@ final class IdlePetWindowManager: NSObject, ObservableObject, NSWindowDelegate {
     private var settleWork: DispatchWorkItem?
     private var dir: CGFloat = 1
     private var x: CGFloat = 0
+    private var standing = false
+    private var actionEnd = Date.distantPast
     private var dragging = false
     private var programmaticMove = false
     private var mode: Mode = .patrolling
@@ -115,8 +117,13 @@ final class IdlePetWindowManager: NSObject, ObservableObject, NSWindowDelegate {
     /// draw it there (walking mode normally hides the in-face pet).
     @Published private(set) var petShownInNotchFace = false
 
-    private static let walkSpeed: CGFloat = 42 // points per second
+    private static let walkSpeed: CGFloat = 14 // points per second, a stroll
     private static let tickInterval: TimeInterval = 1.0 / 30.0
+    /// Length of one stroll and one idle stop; the pet alternates between
+    /// them so it reads as "playing around the menu bar" rather than a
+    /// metronome back and forth.
+    private static let strollRange: ClosedRange<Double> = 8...22
+    private static let stopRange: ClosedRange<Double> = 3...9
 
     func sync(_ newInputs: Inputs) {
         guard newInputs.enabled, newInputs.hasAnimation, newInputs.notchRect != nil else {
@@ -170,6 +177,8 @@ final class IdlePetWindowManager: NSObject, ObservableObject, NSWindowDelegate {
 
         // Start hugging the notch edge, ready to walk away; with no room to
         // patrol (tiny screen straddled by the notch) the pet stays hidden.
+        standing = false
+        actionEnd = Date().addingTimeInterval(Double.random(in: Self.strollRange))
         if let segment = currentSegment() {
             x = segment.lowerBound
             placeWindow()
@@ -231,8 +240,19 @@ final class IdlePetWindowManager: NSObject, ObservableObject, NSWindowDelegate {
 
     // MARK: Walk loop
 
+    /// Alternates strolling and standing still: while stopped the same
+    /// Lottie keeps playing in place, which is exactly the idle animation
+    /// the pet shows inside the notch, so walking and resting blend.
     private func tick() {
         guard mode == .patrolling, !dragging, let segment = currentSegment() else { return }
+        let now = Date()
+        if now >= actionEnd {
+            standing.toggle()
+            actionEnd = now.addingTimeInterval(standing
+                ? Double.random(in: Self.stopRange)
+                : Double.random(in: Self.strollRange))
+        }
+        guard !standing else { return }
         let step = Self.walkSpeed * CGFloat(Self.tickInterval) * dir
         var next = x + step
         if next <= segment.lowerBound {
@@ -296,6 +316,8 @@ final class IdlePetWindowManager: NSObject, ObservableObject, NSWindowDelegate {
             guard let segment = self.currentSegment() else { return }
             self.mode = .patrolling
             self.petShownInNotchFace = false
+            self.standing = false
+            self.actionEnd = Date().addingTimeInterval(Double.random(in: Self.strollRange))
             self.x = segment.lowerBound
             self.dir = 1
             self.setFacing()

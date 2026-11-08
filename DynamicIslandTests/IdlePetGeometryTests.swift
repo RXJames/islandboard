@@ -14,13 +14,20 @@ final class IdlePetGeometryTests: XCTestCase {
 
     // MARK: faceSide
 
-    func testFaceSideStaysBelowNotchHeightCap() {
-        // The pet box must never reach the camera cutout: at most height - 6.
+    func testFaceSideStaysWithinNotchHeight() {
+        // 100% means flush: the pet touches the notch's edge but never
+        // exceeds it.
         for height in [24.0, 32.0, 40.0, 60.0] {
             let side = IdlePetGeometry.faceSide(notchWidth: 200, notchHeight: height, scale: 1.0)
-            XCTAssertLessThanOrEqual(side, height - 6, "height \(height) overflowed the cap")
+            XCTAssertLessThanOrEqual(side, height, "height \(height) overflowed the cap")
             XCTAssertGreaterThan(side, 0)
         }
+    }
+
+    func testFaceSideAtFullScaleIsFlush() {
+        // A normal notch: the area term exceeds the height cap, so 100%
+        // lands exactly on the notch height.
+        XCTAssertEqual(IdlePetGeometry.faceSide(notchWidth: 200, notchHeight: 32, scale: 1.0), 32, accuracy: 0.0001)
     }
 
     func testFaceSideGrowsWithNotchArea() {
