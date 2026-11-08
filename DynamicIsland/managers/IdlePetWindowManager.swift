@@ -256,12 +256,12 @@ final class IdlePetWindowManager: NSObject, ObservableObject, NSWindowDelegate {
     }
 
     private func placeWindow() {
-        guard let window, let screen else { return }
+        guard let window, let screen, let notch = inputs.notchRect else { return }
         let size = petSize
-        // Flush with the top of the screen: the pet rides the menu bar's
-        // upper edge, sharing the notch's baseline. The patrol band keeps
-        // it clear of the camera cutout horizontally.
-        let y = screen.frame.maxY - size
+        // Bottom-aligned with the notch face, exactly where the in-face pet
+        // sits: when the window slides out its vertical position never
+        // changes, so the pet looks like it walks along the notch's floor.
+        let y = screen.frame.maxY - notch.height
         programmaticMove = true
         window.setFrame(NSRect(x: x, y: y, width: size, height: size), display: window.isVisible)
         programmaticMove = false
@@ -292,10 +292,15 @@ final class IdlePetWindowManager: NSObject, ObservableObject, NSWindowDelegate {
 
     private func beginWalk() {
         introWork = nil
-        guard let segment = currentSegment() else { return }
+        guard let segment = currentSegment(), let notch = inputs.notchRect else { return }
         petShownInNotchFace = false
-        x = segment.lowerBound
-        dir = 1
+        // Start under the face pet's exact slot (right edge of the notch,
+        // 10 pt inset). The window sits below the notch window in level,
+        // so the pet is occluded by the notch until it has physically
+        // walked past the pill edge - it emerges from behind, never pops.
+        x = notch.maxX - 10 - petSize
+        // Head towards the patrol band even when it is on the far side.
+        dir = x < segment.lowerBound ? 1 : -1
         standing = false
         actionEnd = Date().addingTimeInterval(Double.random(in: Self.strollRange))
         setFacing()
@@ -334,14 +339,19 @@ final class IdlePetWindowManager: NSObject, ObservableObject, NSWindowDelegate {
         guard !standing else { return }
         let step = Self.walkSpeed * CGFloat(Self.tickInterval) * dir
         var next = x + step
-        if next <= segment.lowerBound {
-            next = segment.lowerBound
-            dir = 1
-            setFacing()
-        } else if next >= segment.upperBound {
-            next = segment.upperBound
-            dir = -1
-            setFacing()
+        // Turn only when inside the band; the entry leg (walking out from
+        // under the notch, or across it toward a far-side band) walks on
+        // without snapping, and once inside, the ends take over.
+        if x >= segment.lowerBound, x <= segment.upperBound {
+            if next >= segment.upperBound {
+                next = segment.upperBound
+                dir = -1
+                setFacing()
+            } else if next <= segment.lowerBound {
+                next = segment.lowerBound
+                dir = 1
+                setFacing()
+            }
         }
         x = next
         placeWindow()
