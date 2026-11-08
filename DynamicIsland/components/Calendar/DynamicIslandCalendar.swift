@@ -487,6 +487,7 @@ struct CalendarView: View {
         }
         .onAppear {
             Task {
+                await calendarManager.checkCalendarAuthorization()
                 await calendarManager.updateCurrentDate(Date.now)
                 selectedDate = Date.now
             }
@@ -607,7 +608,13 @@ struct StandaloneCalendarView: View {
             displayedMonth = selectedDate.startOfMonth
             requestDatePickerCenterOnCurrentDate()
             Task {
+                await calendarManager.checkCalendarAuthorization()
                 await calendarManager.updateCurrentDate(selectedDate)
+            }
+        }
+        .onAppear {
+            Task {
+                await calendarManager.checkCalendarAuthorization()
             }
         }
     }
@@ -804,6 +811,41 @@ struct StandaloneCalendarView: View {
     }
 }
 
+/// Right-click (context menu) deletion shared by both calendar list styles.
+/// The manager refresh is forced, so the row disappears as soon as EventKit
+/// confirms the removal.
+private struct CalendarDeletableModifier: ViewModifier {
+    let event: EventModel
+    @Binding var errorMessage: String?
+
+    func body(content: Content) -> some View {
+        content.contextMenu {
+            Button(role: .destructive) {
+                Task {
+                    do {
+                        try await CalendarManager.shared.deleteCalendarItem(identifier: event.id)
+                    } catch {
+                        errorMessage = error.localizedDescription
+                        let message = error.localizedDescription
+                        Task {
+                            try? await Task.sleep(nanoseconds: 3_500_000_000)
+                            if errorMessage == message { errorMessage = nil }
+                        }
+                    }
+                }
+            } label: {
+                Label(String(localized: "Delete Event"), systemImage: "trash")
+            }
+        }
+    }
+}
+
+extension View {
+    func calendarDeletable(_ event: EventModel, errorMessage: Binding<String?>) -> some View {
+        modifier(CalendarDeletableModifier(event: event, errorMessage: errorMessage))
+    }
+}
+
 // MARK: - New event editor
 //
 // Mirrors macOS Calendar's New Event inspector: plain "Add Title" field on top,
@@ -821,6 +863,7 @@ struct NewEventPopover: View {
     @State private var durationMinutes: Int
     @State private var calendarID: String?
     @State private var errorMessage: String?
+    @State private var needsPermission = false
     @State private var isSaving = false
     private let autoCloseToken = UUID()
 
@@ -915,10 +958,20 @@ struct NewEventPopover: View {
             }
 
             if let errorMessage {
-                Text(errorMessage)
-                    .font(.caption2)
-                    .foregroundStyle(.red)
-                    .lineLimit(2)
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(errorMessage)
+                        .font(.caption2)
+                        .foregroundStyle(.red)
+                        .lineLimit(2)
+                    if needsPermission {
+                        Button(String(localized: "Open Settings")) {
+                            if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars") {
+                                NSWorkspace.shared.open(url)
+                            }
+                        }
+                        .controlSize(.small)
+                    }
+                }
             }
 
             HStack {
@@ -975,7 +1028,16 @@ struct NewEventPopover: View {
                 )
                 dismiss()
             } catch {
-                errorMessage = error.localizedDescription
+                if (error as? CalendarWriteError) == .noAccess {
+                    // First denial may be legacy/absent permission: ask the system
+                    // once (prompts only while status is notDetermined), then offer
+                    // the Settings deep link for the remaining cases.
+                    needsPermission = true
+                    await CalendarManager.shared.checkCalendarAuthorization()
+                    errorMessage = String(localized: "Calendar access is not granted. Allow it, then press Add again.")
+                } else {
+                    errorMessage = error.localizedDescription
+                }
                 isSaving = false
             }
         }
@@ -1020,6 +1082,7 @@ private struct StandaloneEventCardList: View {
     let showFullEventTitles: Bool
     let onToggleReminder: (String, Bool) -> Void
     @State private var initialAutoScrollDone = false
+    @State private var deleteErrorMessage: String?
 
     private var allDayEvents: [EventModel] {
         partitionEvents(events).allDay.sorted { $0.start < $1.start }
@@ -1068,6 +1131,7 @@ private struct StandaloneEventCardList: View {
                                 .listRowSeparator(.hidden)
                                 .listRowBackground(Color.clear)
                                 .listRowInsets(EdgeInsets())
+                                .calendarDeletable(event, errorMessage: $deleteErrorMessage)
                         }
                     }
                     .listStyle(.plain)
@@ -1116,6 +1180,17 @@ private struct StandaloneEventCardList: View {
                     onToggleReminder: onToggleReminder
                 )
                 .background(Color.black.opacity(0.95))
+            }
+        }
+        .overlay(alignment: .bottom) {
+            if let deleteErrorMessage {
+                Text(deleteErrorMessage)
+                    .font(.caption2)
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(Color.black.opacity(0.85), in: Capsule())
+                    .padding(.bottom, 6)
             }
         }
         .clipped()
@@ -1258,6 +1333,7 @@ struct EventListView: View {
     @Default(.hideCompletedReminders) private var hideCompletedReminders
     @Default(.hideAllDayEvents) private var hideAllDayEvents
     @State private var initialAutoScrollDone = false
+    @State private var deleteErrorMessage: String?
 
     static func filteredEvents(
         events: [EventModel],
@@ -1336,6 +1412,7 @@ struct EventListView: View {
                             .listRowSeparator(.automatic)
                             .listRowSeparatorTint(.gray.opacity(0.2))
                             .listRowBackground(Color.clear)
+                            .calendarDeletable(event, errorMessage: $deleteErrorMessage)
                         }
                     }
                     .listStyle(.plain)
@@ -1389,6 +1466,17 @@ struct EventListView: View {
                     }
                 )
                 .background(Color.black.opacity(0.95))
+            }
+        }
+        .overlay(alignment: .bottom) {
+            if let deleteErrorMessage {
+                Text(deleteErrorMessage)
+                    .font(.caption2)
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color.black.opacity(0.85), in: Capsule())
+                    .padding(.bottom, 2)
             }
         }
         Spacer(minLength: 0)

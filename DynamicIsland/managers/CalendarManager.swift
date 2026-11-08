@@ -429,6 +429,12 @@ class CalendarManager: ObservableObject {
     func defaultEventCalendarID() -> String? {
         calendarService.defaultEventCalendarID()
     }
+
+    func deleteCalendarItem(identifier: String) async throws {
+        try calendarService.deleteCalendarItem(identifier: identifier)
+        await updateEvents(force: true)
+        await updateLockScreenEvents(force: true)
+    }
 }
 
 // MARK: - Event Fetch Limiter

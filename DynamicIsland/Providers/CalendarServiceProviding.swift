@@ -23,14 +23,16 @@
 import Foundation
 import EventKit
 
-enum CalendarWriteError: LocalizedError {
+enum CalendarWriteError: LocalizedError, Equatable {
     case noAccess
     case noCalendar
+    case notFound
 
     var errorDescription: String? {
         switch self {
         case .noAccess: return String(localized: "Calendar write access is not granted")
         case .noCalendar: return String(localized: "No calendar available for new events")
+        case .notFound: return String(localized: "This item is no longer in the calendar store")
         }
     }
 }
@@ -42,6 +44,7 @@ protocol CalendarServiceProviding {
     func events(from start: Date, to end: Date, calendars: [String]) async -> [EventModel]
     func setReminderCompleted(reminderID: String, completed: Bool) async
     func createEvent(title: String, start: Date, end: Date, allDay: Bool, calendarID: String?) throws
+    func deleteCalendarItem(identifier: String) throws
     func defaultEventCalendarID() -> String?
 }
 
@@ -76,9 +79,11 @@ class CalendarService: CalendarServiceProviding {
         }
     }
     
-    private func hasAccess(to entityType: EKEntityType) -> Bool {
+    private func hasAccess(to entityType: EKEntityType, writeOnlyIsEnough: Bool = false) -> Bool {
         let status = EKEventStore.authorizationStatus(for: entityType)
-        return status == .fullAccess
+        if status == .fullAccess || status == .authorized { return true }
+        // Write-only can save new items but cannot enumerate or fetch them.
+        return writeOnlyIsEnough && status == .writeOnly
     }
     
     func calendars() async -> [CalendarModel] {
@@ -162,7 +167,7 @@ class CalendarService: CalendarServiceProviding {
     /// all-day events span whole days (exclusive end), timed events keep their
     /// start/end instants in the local time zone.
     func createEvent(title: String, start: Date, end: Date, allDay: Bool, calendarID: String?) throws {
-        guard hasAccess(to: .event) else { throw CalendarWriteError.noAccess }
+        guard hasAccess(to: .event, writeOnlyIsEnough: true) else { throw CalendarWriteError.noAccess }
         let calendar: EKCalendar
         if let calendarID, let match = store.calendars(for: .event).first(where: { $0.calendarIdentifier == calendarID }) {
             calendar = match
@@ -186,6 +191,22 @@ class CalendarService: CalendarServiceProviding {
             event.endDate = max(end, start.addingTimeInterval(60))
         }
         try store.save(event, span: .thisEvent, commit: true)
+    }
+
+    /// Removes a calendar event or reminder by `calendarItemIdentifier`.
+    /// Needs read-write access: the item is fetched from the store first.
+    func deleteCalendarItem(identifier: String) throws {
+        guard hasAccess(to: .event) else { throw CalendarWriteError.noAccess }
+        guard let item = store.calendarItem(withIdentifier: identifier) else {
+            throw CalendarWriteError.notFound
+        }
+        if let event = item as? EKEvent {
+            try store.remove(event, span: .thisEvent, commit: true)
+        } else if let reminder = item as? EKReminder {
+            try store.remove(reminder, commit: true)
+        } else {
+            throw CalendarWriteError.notFound
+        }
     }
 }
 

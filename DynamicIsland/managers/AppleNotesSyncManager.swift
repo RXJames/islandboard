@@ -44,6 +44,10 @@ struct RemoteAppleNote: Sendable {
     let creationDate: Date
     let modificationDate: Date
     let atollId: UUID?
+    /// Password-protected notes cannot be read over AppleScript. They are
+    /// reported as alive-but-unreadable so the merge never prunes their local
+    /// rows (and never pushes over them), instead of looking deleted.
+    var isLocked: Bool = false
 }
 
 @MainActor
@@ -59,36 +63,84 @@ final class AppleNotesSyncManager: ObservableObject {
     private static let atollTagPattern = #"<!--atoll:id=([0-9A-Fa-f-]{36})-->"#
 
     private var syncTask: Task<Void, Never>?
+    private var pendingSync = false
+    private var refreshTask: Task<Void, Never>?
+    private var notesQuitObserver: NSObjectProtocol?
 
     private init() {}
 
     func requestSync(localNotes: [NoteItem]) {
         guard Defaults[.enableAppleNotesSync] else { return }
+        ensureWatching()
         syncTask?.cancel()
         syncTask = Task { [weak self] in
             guard let self else { return }
-            _ = await self.sync(localNotes: localNotes)
+            if let merged = await self.sync(localNotes: localNotes) {
+                Defaults[.savedNotes] = merged
+            }
         }
     }
 
     @discardableResult
     func sync(localNotes: [NoteItem]) async -> [NoteItem]? {
         guard Defaults[.enableAppleNotesSync] else { return nil }
-        guard !isSyncing else { return nil }
+        ensureWatching()
+        // A refresh that races an in-flight sync must not be dropped: mark it
+        // pending and rerun the cycle when the current one finishes.
+        guard !isSyncing else {
+            pendingSync = true
+            return nil
+        }
 
         isSyncing = true
         lastError = nil
         defer { isSyncing = false }
 
-        do {
-            let remoteNotes = try await fetchRemoteNotes()
-            var merged = try await merge(localNotes: localNotes, remoteNotes: remoteNotes)
-            merged = try await pushUnlinkedLocalNotes(merged)
-            Defaults[.appleNotesLastSyncDate] = Date()
-            return merged
-        } catch {
-            lastError = error.localizedDescription
-            return nil
+        var snapshot = localNotes
+        var result: [NoteItem]?
+        repeat {
+            pendingSync = false
+            do {
+                let remoteNotes = try await fetchRemoteNotes()
+                var merged = try await merge(localNotes: snapshot, remoteNotes: remoteNotes)
+                merged = try await pushUnlinkedLocalNotes(merged)
+                Defaults[.appleNotesLastSyncDate] = Date()
+                result = merged
+                snapshot = merged
+            } catch {
+                lastError = error.localizedDescription
+                result = nil
+            }
+        } while pendingSync
+        return result
+    }
+
+    /// Background liveness for the AppleScript-backed sync: Notes.app offers
+    /// no store-change notification, so deletions made there surface on a 60 s
+    /// loop and immediately when Notes quits (edits flushed to disk).
+    private func ensureWatching() {
+        guard refreshTask == nil else { return }
+        refreshTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 60_000_000_000)
+                guard let self, Defaults[.enableAppleNotesSync] else { continue }
+                await self.requestSyncQuietly()
+            }
+        }
+        notesQuitObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didTerminateApplicationNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            guard let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
+                  app.bundleIdentifier == "com.apple.Notes" else { return }
+            Task { @MainActor in await self?.requestSyncQuietly() }
+        }
+    }
+
+    private func requestSyncQuietly() async {
+        if let merged = await sync(localNotes: Defaults[.savedNotes]) {
+            Defaults[.savedNotes] = merged
         }
     }
 
@@ -138,6 +190,9 @@ final class AppleNotesSyncManager: ObservableObject {
                   let remote = remoteById[appleNotesId] else { continue }
 
             linkedRemoteIds.insert(appleNotesId)
+            // Locked remote notes cannot be read or written safely: keep the
+            // local copy untouched.
+            if remote.isLocked { continue }
 
             if remote.modificationDate > notes[index].modificationDate {
                 applyRemote(remote, to: &notes[index])
@@ -149,6 +204,7 @@ final class AppleNotesSyncManager: ObservableObject {
         // 遍历去重后的 remoteById.values 而非原始 remoteNotes：否则同 id 的旧副本可能先被
         // 处理并占位，新副本被跳过，atollId 匹配与新笔记导入的结果就会依赖数组顺序。
         for remote in remoteById.values where !linkedRemoteIds.contains(remote.id) {
+            if remote.isLocked { continue } // unreadable; importing an empty shell would be worse
             if let atollId = remote.atollId,
                let index = notes.firstIndex(where: { $0.id == atollId }) {
                 linkedRemoteIds.insert(remote.id)
@@ -207,9 +263,23 @@ final class AppleNotesSyncManager: ObservableObject {
     // MARK: - AppleScript bridge
 
     private func fetchRemoteNotes() async throws -> [RemoteAppleNote] {
+        // Notes.app has no "deleted" AppleScript flag: soft-deleted notes keep
+        // being enumerated from the "Recently Deleted" folder, which is only
+        // identifiable by its (localized) name. Enumerating them as live is what
+        // used to keep deleted notes alive in Atoll forever, so the folder is
+        // skipped by the per-locale name list Apple ships.
+        let trashNames = [
+            "Recently Deleted", "最近删除", "最近刪除", "Supprimés récemment",
+            "Zuletzt gelöscht", "Eliminati di recente", "Eliminados recientemente",
+            "Apagados recentemente", "削除した項目", "최근 삭제된 항목",
+            "Недавно удаленные", "العناصر المحذوفة مؤخرًا", "Recent verwijderd",
+            "Ostatnio usunięte", "Son Silinenler", "Baru Dihapus", "Nyligen raderade",
+        ]
+        let trashLiteral = trashNames.map { "\"\($0)\"" }.joined(separator: ", ")
         let script = """
         set fieldSep to "\(Self.fieldSeparator)"
         set recordSep to "\(Self.recordSeparator)"
+        set trashNames to {\(trashLiteral)}
         tell application "Notes"
             set epoch to (current date)
             set hours of epoch to 0
@@ -219,13 +289,22 @@ final class AppleNotesSyncManager: ObservableObject {
             set month of epoch to January
             set day of epoch to 1
             set chunks to {}
-            repeat with n in notes of default account
-                if password protected of n is false then
-                    set notePlain to plaintext of n
-                    set notePlain to my sanitizeField(notePlain, fieldSep, recordSep)
-                    set atollId to my extractAtollId(body of n)
-                    set chunk to (id of n) & fieldSep & (name of n) & fieldSep & ((creation date of n) - epoch as string) & fieldSep & ((modification date of n) - epoch as string) & fieldSep & notePlain & fieldSep & atollId
-                    set end of chunks to chunk
+            repeat with f in folders of default account
+                if (name of f) is in trashNames then
+                    -- skip soft-deleted notes entirely
+                else
+                    repeat with n in notes of f
+                        if password protected of n then
+                            -- Alive but unreadable: id-only marker, locked flag set.
+                            set end of chunks to (id of n) & fieldSep & fieldSep & fieldSep & fieldSep & fieldSep & fieldSep & "1"
+                        else
+                            set notePlain to plaintext of n
+                            set notePlain to my sanitizeField(notePlain, fieldSep, recordSep)
+                            set atollId to my extractAtollId(body of n)
+                            set chunk to (id of n) & fieldSep & (name of n) & fieldSep & ((creation date of n) - epoch as string) & fieldSep & ((modification date of n) - epoch as string) & fieldSep & notePlain & fieldSep & atollId & fieldSep & "0"
+                            set end of chunks to chunk
+                        end if
+                    end repeat
                 end if
             end repeat
             set AppleScript's text item delimiters to recordSep
@@ -256,16 +335,26 @@ final class AppleNotesSyncManager: ObservableObject {
         return parseRemoteNotes(output)
     }
 
-    private func parseRemoteNotes(_ payload: String) -> [RemoteAppleNote] {
+    func parseRemoteNotes(_ payload: String) -> [RemoteAppleNote] {
         guard !payload.isEmpty else { return [] }
 
         return payload
             .split(separator: Character(Self.recordSeparator), omittingEmptySubsequences: true)
             .compactMap { record in
-                let fields = record.split(separator: Character(Self.fieldSeparator), maxSplits: 5, omittingEmptySubsequences: false)
+                let fields = record.split(separator: Character(Self.fieldSeparator), maxSplits: 6, omittingEmptySubsequences: false)
                 guard fields.count >= 5 else { return nil }
 
                 let id = String(fields[0])
+                guard !id.isEmpty else { return nil }
+                let locked = fields.count > 6 && String(fields[6]) == "1"
+                if locked {
+                    return RemoteAppleNote(
+                        id: id, title: "", content: "",
+                        creationDate: .distantPast, modificationDate: .distantPast,
+                        atollId: nil, isLocked: true
+                    )
+                }
+
                 let title = String(fields[1])
                 guard let created = parseAppleScriptSeconds(String(fields[2])),
                       let modified = parseAppleScriptSeconds(String(fields[3])) else { return nil }
