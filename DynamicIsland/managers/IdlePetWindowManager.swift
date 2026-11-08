@@ -132,7 +132,11 @@ final class IdlePetWindowManager: NSObject, ObservableObject, NSWindowDelegate {
         }
         let geometryChanged = newInputs.notchRect != inputs.notchRect || newInputs.scale != inputs.scale
         inputs = newInputs
-        if window == nil { build() }
+        if window == nil {
+            // Same transaction-safety as `stop`: never spin AppKit windows up
+            // or down while SwiftUI is mid-update.
+            DispatchQueue.main.async { [weak self] in self?.build() }
+        }
         if geometryChanged {
             relayoutSize()
             clampIntoSegment()
@@ -146,18 +150,29 @@ final class IdlePetWindowManager: NSObject, ObservableObject, NSWindowDelegate {
         settleWork = nil
         timer?.invalidate()
         timer = nil
-        window?.orderOut(nil)
-        window?.close()
+        // Tearing a window down (and publishing state changes) from inside a
+        // SwiftUI view-update transaction - `sync` runs straight out of an
+        // `onChange` - crashes the hosting view mid-flush. Detach both:
+        // publish only when the value actually changes, close the panel on
+        // the next loop turn.
+        let closing = window
         window = nil
         host = nil
         dragging = false
         mode = .patrolling
-        petShownInNotchFace = false
+        if petShownInNotchFace { petShownInNotchFace = false }
+        if let closing {
+            DispatchQueue.main.async {
+                closing.orderOut(nil)
+                closing.close()
+            }
+        }
     }
 
     // MARK: Window
 
     private func build() {
+        guard window == nil, inputs.enabled, inputs.hasAnimation, inputs.notchRect != nil else { return }
         let size = petSize
         let hosting = NSHostingView(rootView: IdlePetWindowContent(size: size))
         let panel = NSWindow(contentRect: NSRect(x: 0, y: 0, width: size, height: size),
