@@ -22,6 +22,12 @@ import Defaults
 
 private final class LiquidGlassContainerView: NSView {
     weak var glassView: NSView?
+    /// Layer-backed wrapper around the material view. `NSGlassEffectView`
+    /// (and `NSVisualEffectView`) composite their backdrop through the
+    /// WindowServer and ignore the view's own `alphaValue`; fading the
+    /// wrapper's `layer.opacity` is what actually makes the material
+    /// translucent while the hosted content stays fully opaque.
+    weak var glassOpacityHost: NSView?
     var hostingView: NSHostingView<AnyView>?
 
     private var observedBackdropLayers: [CALayer] = []
@@ -140,6 +146,16 @@ public enum LiquidGlassVariant: Int, CaseIterable, Identifiable, Defaults.Serial
         let clamped = min(max(rawValue, supportedRange.lowerBound), supportedRange.upperBound)
         return LiquidGlassVariant(rawValue: clamped) ?? .defaultVariant
     }
+
+    /// Slider semantics: the stored value is a translucency scale, not one
+    /// of Apple's undocumented look-up numbers — left (0) is a fully
+    /// transparent panel, right (19) a fully opaque one. Renderers driven
+    /// by user sliders pass this as the material's opacity and pin the
+    /// private variant itself to ``defaultVariant``, so dragging is
+    /// guaranteed monotonic instead of hopping between 20 unknown looks.
+    public var backgroundOpacity: Double {
+        Double(rawValue) / Double(LiquidGlassVariant.supportedRange.upperBound)
+    }
 }
 
 /// A SwiftUI view that embeds its content inside Apple’s private liquid‑glass material.
@@ -159,18 +175,24 @@ public struct LiquidGlassBackground<Content: View>: NSViewRepresentable {
     private let content: Content
     private let cornerRadius: CGFloat
     private let variant: LiquidGlassVariant
+    private let opacity: Double
     /// Creates a new liquid‑glass container.
     /// - Parameters:
     ///   - variant: Any ``LiquidGlassVariant`` (0–19). Defaults to `.v11`, which is visually super pleasing
     ///   - cornerRadius: Corner radius in points. Defaults to `10`.
+    ///   - opacity: Material opacity, 0 (glass invisible, wallpaper as-is)
+    ///     through 1 (full glass). The hosted content always stays fully
+    ///     opaque; only the material fades.
     ///   - content: Your SwiftUI hierarchy.
     public init(
         variant: LiquidGlassVariant = .defaultVariant,
         cornerRadius: CGFloat = 10,
+        opacity: Double = 1,
         @ViewBuilder content: () -> Content
     ) {
         self.variant      = variant
         self.cornerRadius = cornerRadius
+        self.opacity      = min(max(opacity, 0), 1)
         self.content      = content()
     }
 
@@ -220,52 +242,93 @@ public struct LiquidGlassBackground<Content: View>: NSViewRepresentable {
             glass.setValue(cornerRadius, forKey: "cornerRadius")
             callPrivateVariantSetter(on: glass, value: variant.rawValue)
 
+            // The content rides as a sibling above the material, NOT inside
+            // it: the opacity host fades only the glass, so a transparent
+            // panel still shows its album art and text at full strength.
+            // `alphaValue` on the material itself is ignored by the
+            // WindowServer backdrop compositing, hence the layer wrapper.
+            let opacityHost = NSView(frame: .zero)
+            opacityHost.translatesAutoresizingMaskIntoConstraints = false
+            opacityHost.wantsLayer = true
+            opacityHost.layer?.opacity = Float(opacity)
+            opacityHost.addSubview(glass)
+
             let hosting = NSHostingView(rootView: AnyView(content))
             hosting.translatesAutoresizingMaskIntoConstraints = false
-            glass.setValue(hosting, forKey: "contentView")
 
-            container.addSubview(glass)
+            container.addSubview(opacityHost)
+            container.addSubview(hosting)
             NSLayoutConstraint.activate([
-                glass.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-                glass.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-                glass.topAnchor.constraint(equalTo: container.topAnchor),
-                glass.bottomAnchor.constraint(equalTo: container.bottomAnchor)
+                opacityHost.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+                opacityHost.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+                opacityHost.topAnchor.constraint(equalTo: container.topAnchor),
+                opacityHost.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+                glass.leadingAnchor.constraint(equalTo: opacityHost.leadingAnchor),
+                glass.trailingAnchor.constraint(equalTo: opacityHost.trailingAnchor),
+                glass.topAnchor.constraint(equalTo: opacityHost.topAnchor),
+                glass.bottomAnchor.constraint(equalTo: opacityHost.bottomAnchor),
+                hosting.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+                hosting.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+                hosting.topAnchor.constraint(equalTo: container.topAnchor),
+                hosting.bottomAnchor.constraint(equalTo: container.bottomAnchor)
             ])
 
             container.glassView = glass
+            container.glassOpacityHost = opacityHost
             container.hostingView = hosting
             container.scheduleBackdropSetup()
             return container
         }
 
-        // Fallback for earlier macOS – use an ordinary blur.
-        let fallback = NSVisualEffectView()
-        fallback.material = .underWindowBackground
+        // Fallback for earlier macOS – use an ordinary blur, faded the same
+        // layer-backed way so the opacity slider actually does something.
+        let container = LiquidGlassContainerView(frame: .zero)
+        container.translatesAutoresizingMaskIntoConstraints = false
 
-        let hosting = NSHostingView(rootView: content)
+        let opacityHost = NSView(frame: .zero)
+        opacityHost.translatesAutoresizingMaskIntoConstraints = false
+        opacityHost.wantsLayer = true
+        opacityHost.layer?.opacity = Float(opacity)
+
+        let effect = NSVisualEffectView()
+        effect.material = .underWindowBackground
+        effect.translatesAutoresizingMaskIntoConstraints = false
+        opacityHost.addSubview(effect)
+
+        let hosting = NSHostingView(rootView: AnyView(content))
         hosting.translatesAutoresizingMaskIntoConstraints = false
-        fallback.addSubview(hosting)
+
+        container.addSubview(opacityHost)
+        container.addSubview(hosting)
         NSLayoutConstraint.activate([
-            hosting.leadingAnchor.constraint(equalTo: fallback.leadingAnchor),
-            hosting.trailingAnchor.constraint(equalTo: fallback.trailingAnchor),
-            hosting.topAnchor.constraint(equalTo: fallback.topAnchor),
-            hosting.bottomAnchor.constraint(equalTo: fallback.bottomAnchor)
+            opacityHost.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            opacityHost.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            opacityHost.topAnchor.constraint(equalTo: container.topAnchor),
+            opacityHost.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+            effect.leadingAnchor.constraint(equalTo: opacityHost.leadingAnchor),
+            effect.trailingAnchor.constraint(equalTo: opacityHost.trailingAnchor),
+            effect.topAnchor.constraint(equalTo: opacityHost.topAnchor),
+            effect.bottomAnchor.constraint(equalTo: opacityHost.bottomAnchor),
+            hosting.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            hosting.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            hosting.topAnchor.constraint(equalTo: container.topAnchor),
+            hosting.bottomAnchor.constraint(equalTo: container.bottomAnchor)
         ])
-        return fallback
+
+        container.hostingView = hosting
+        return container
     }
 
     public func updateNSView(_ nsView: NSView, context: Context) {
-        if let container = nsView as? LiquidGlassContainerView,
-           let glass = container.glassView {
-            container.hostingView?.rootView = AnyView(content)
+        guard let container = nsView as? LiquidGlassContainerView else { return }
+        container.hostingView?.rootView = AnyView(content)
+        if let glass = container.glassView {
             glass.setValue(cornerRadius, forKey: "cornerRadius")
             callPrivateVariantSetter(on: glass, value: variant.rawValue)
-            container.scheduleBackdropSetup()
-            return
         }
-
-        if let hosting = nsView.subviews.first as? NSHostingView<Content> {
-            hosting.rootView = content
+        container.glassOpacityHost?.layer?.opacity = Float(opacity)
+        if container.glassView != nil {
+            container.scheduleBackdropSetup()
         }
     }
 }

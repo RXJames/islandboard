@@ -1130,6 +1130,16 @@ extension Defaults.Keys {
         "lockScreenMusicLiquidGlassVariant",
         default: .defaultVariant
     )
+    static let lockScreenWeatherPanelGlass = Key<Bool>("lockScreenWeatherPanelGlass", default: false)
+    static let lockScreenWeatherLiquidGlassVariant = Key<LiquidGlassVariant>(
+        "lockScreenWeatherLiquidGlassVariant",
+        default: .defaultVariant
+    )
+    static let lockScreenReminderPanelGlass = Key<Bool>("lockScreenReminderPanelGlass", default: false)
+    static let lockScreenReminderLiquidGlassVariant = Key<LiquidGlassVariant>(
+        "lockScreenReminderLiquidGlassVariant",
+        default: .defaultVariant
+    )
     static let lockScreenTimerLiquidGlassVariant = Key<LiquidGlassVariant>(
         "lockScreenTimerLiquidGlassVariant",
         default: .defaultVariant

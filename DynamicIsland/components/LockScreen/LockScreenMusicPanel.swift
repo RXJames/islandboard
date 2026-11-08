@@ -1543,7 +1543,7 @@ struct LockScreenMusicPanel: View {
 
     @ViewBuilder
     private var customLiquidPanelBackdrop: some View {
-        LiquidGlassBackground(variant: musicGlassVariant, cornerRadius: panelCornerRadius) {
+        LiquidGlassBackground(variant: .defaultVariant, cornerRadius: panelCornerRadius, opacity: musicGlassVariant.backgroundOpacity) {
             Color.white.opacity(0.04)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -1677,7 +1677,7 @@ struct LockScreenMusicPanel: View {
 
     @ViewBuilder
     private func customLiquidAlbumArtBackground(cornerRadius: CGFloat) -> some View {
-        LiquidGlassBackground(variant: musicGlassVariant, cornerRadius: cornerRadius) {
+        LiquidGlassBackground(variant: .defaultVariant, cornerRadius: cornerRadius, opacity: musicGlassVariant.backgroundOpacity) {
             Color.clear
         }
     }

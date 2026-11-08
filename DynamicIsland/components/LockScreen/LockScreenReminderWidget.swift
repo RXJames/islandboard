@@ -22,10 +22,35 @@ import Defaults
 struct LockScreenReminderWidget: View {
     let snapshot: LockScreenReminderWidgetSnapshot
     @Default(.lockScreenWidgetAppearance) private var appearance
+    @Default(.lockScreenReminderPanelGlass) private var reminderPanelGlassEnabled
+    @Default(.lockScreenReminderLiquidGlassVariant) private var reminderPanelGlassVariant
+    @Default(.lockScreenGlassStyle) private var lockScreenGlassStyle
+    @Default(.lockScreenGlassCustomizationMode) private var lockScreenGlassCustomizationMode
 
     private let primaryFont = Font.system(size: 19, weight: .semibold, design: .rounded)
     private let iconSize: CGFloat = 20
     private let chipWidth: CGFloat = 9
+
+    // Pill-shaped glass behind the reminder chip; opt-in like the weather panel.
+    @ViewBuilder
+    private var panelGlassBackground: some View {
+        if reminderPanelGlassEnabled {
+            if lockScreenGlassStyle == .liquid {
+                LiquidGlassBackground(
+                    variant: .defaultVariant,
+                    cornerRadius: 20,
+                    opacity: lockScreenGlassCustomizationMode == .customLiquid
+                        ? reminderPanelGlassVariant.backgroundOpacity
+                        : 1.0
+                ) {
+                    Color.white.opacity(0.04)
+                }
+            } else {
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .fill(.ultraThinMaterial)
+            }
+        }
+    }
 
     var body: some View {
         HStack(alignment: .center, spacing: 8) {
@@ -80,7 +105,7 @@ struct LockScreenReminderWidget: View {
         .padding(.vertical, 12)
         .frame(minWidth: 240, idealWidth: 360, maxWidth: 520, alignment: .leading)
         .foregroundStyle(appearance.primary())
-        .background(Color.clear)
+        .background(panelGlassBackground)
         .shadow(color: appearance.contentShadow, radius: 8, x: 0, y: 3)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityLabel)

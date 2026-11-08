@@ -236,7 +236,7 @@ struct LocalSendDevicePickerView: View {
     @ViewBuilder
     private var panelBackground: some View {
         if usesCustomLiquidGlass {
-            LiquidGlassBackground(variant: liquidGlassVariant, cornerRadius: cornerRadius) {
+            LiquidGlassBackground(variant: .defaultVariant, cornerRadius: cornerRadius, opacity: liquidGlassVariant.backgroundOpacity) {
                 Color.black.opacity(0.3)
             }
         } else if usesStandardLiquidGlass {

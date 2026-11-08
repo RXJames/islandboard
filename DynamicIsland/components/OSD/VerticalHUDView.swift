@@ -266,8 +266,9 @@ struct VerticalHUDView: View {
             if #available(macOS 26.0, *) {
                 if verticalHUDLiquidGlassCustomizationMode == .customLiquid {
                     LiquidGlassBackground(
-                        variant: verticalHUDLiquidGlassVariant,
-                        cornerRadius: max(currentWidth, hudWidth)
+                        variant: .defaultVariant,
+                        cornerRadius: max(currentWidth, hudWidth),
+                        opacity: verticalHUDLiquidGlassVariant.backgroundOpacity
                     ) {
                         Color.white.opacity(0.04)
                     }

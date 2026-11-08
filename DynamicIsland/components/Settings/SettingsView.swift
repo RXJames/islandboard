@@ -2281,11 +2281,12 @@ private struct HUDAndOSDSettingsView: View {
                                 if verticalHUDLiquidGlassCustomizationMode == .customLiquid {
                                     VStack(alignment: .leading, spacing: 6) {
                                         HStack {
-                                            Text("Custom liquid variant")
+                                            Text("Glass opacity")
                                             Spacer()
-                                            Text("v\(verticalHUDLiquidGlassVariant.rawValue)")
+                                            Text("\(Int((Double(verticalHUDLiquidGlassVariant.rawValue) / Double(LiquidGlassVariant.supportedRange.upperBound) * 100).rounded()))%")
                                                 .font(.caption)
                                                 .foregroundStyle(.secondary)
+                                                .monospacedDigit()
                                         }
                                         Slider(value: verticalLiquidVariantBinding, in: liquidVariantRange, step: 1)
                                     }
@@ -4585,12 +4586,24 @@ private struct LocalSendSettingsSection: View {
             .pickerStyle(.menu)
             
             if glassMode == .customLiquid {
-                Picker("Liquid Glass Variant", selection: $liquidGlassVariant) {
-                    ForEach(LiquidGlassVariant.allCases) { variant in
-                        Text("Variant \(variant.rawValue)").tag(variant)
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack {
+                        Text("Glass opacity")
+                        Spacer()
+                        Text("\(Int((Double(liquidGlassVariant.rawValue) / Double(LiquidGlassVariant.supportedRange.upperBound) * 100).rounded()))%")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .monospacedDigit()
                     }
+                    Slider(
+                        value: Binding(
+                            get: { Double(liquidGlassVariant.rawValue) },
+                            set: { liquidGlassVariant = LiquidGlassVariant.clamped(Int($0.rounded())) }
+                        ),
+                        in: Double(LiquidGlassVariant.supportedRange.lowerBound)...Double(LiquidGlassVariant.supportedRange.upperBound),
+                        step: 1
+                    )
                 }
-                .pickerStyle(.menu)
             }
         } header: {
             Text("LocalSend Device Picker")
@@ -5649,6 +5662,10 @@ struct LockScreenSettings: View {
     @Default(.lockScreenGlassStyle) private var lockScreenGlassStyle
     @Default(.lockScreenGlassCustomizationMode) private var lockScreenGlassCustomizationMode
     @Default(.lockScreenMusicLiquidGlassVariant) private var lockScreenMusicLiquidGlassVariant
+    @Default(.lockScreenWeatherPanelGlass) private var lockScreenWeatherPanelGlass
+    @Default(.lockScreenWeatherLiquidGlassVariant) private var weatherGlassVariant
+    @Default(.lockScreenReminderPanelGlass) private var lockScreenReminderPanelGlass
+    @Default(.lockScreenReminderLiquidGlassVariant) private var reminderGlassVariant
     @Default(.lockScreenTimerLiquidGlassVariant) private var lockScreenTimerLiquidGlassVariant
     @Default(.lockScreenTimerGlassStyle) private var lockScreenTimerGlassStyle
     @Default(.lockScreenTimerGlassCustomizationMode) private var lockScreenTimerGlassCustomizationMode
@@ -5749,6 +5766,24 @@ struct LockScreenSettings: View {
             set: { newValue in
                 let raw = Int(newValue.rounded())
                 lockScreenMusicLiquidGlassVariant = LiquidGlassVariant.clamped(raw)
+            }
+        )
+    }
+
+    private var weatherVariantBinding: Binding<Double> {
+        Binding(
+            get: { Double(weatherGlassVariant.rawValue) },
+            set: { newValue in
+                weatherGlassVariant = .clamped(Int(newValue.rounded()))
+            }
+        )
+    }
+
+    private var reminderVariantBinding: Binding<Double> {
+        Binding(
+            get: { Double(reminderGlassVariant.rawValue) },
+            set: { newValue in
+                reminderGlassVariant = .clamped(Int(newValue.rounded()))
             }
         )
     }
@@ -5880,6 +5915,16 @@ struct LockScreenSettings: View {
                     }
 
                     if lockScreenGlassStyle == .liquid {
+                        Defaults.Toggle(key: .lockScreenWeatherPanelGlass) {
+                            Text("Glass panel for weather widget")
+                        }
+                        .settingsHighlight(id: highlightID("Glass panel for weather widget"))
+
+                        Defaults.Toggle(key: .lockScreenReminderPanelGlass) {
+                            Text("Glass panel for reminder card")
+                        }
+                        .settingsHighlight(id: highlightID("Glass panel for reminder card"))
+
                         SettingsSegmentedPicker(
                             "Glass mode",
                             selection: $lockScreenGlassCustomizationMode,
@@ -5894,7 +5939,7 @@ struct LockScreenSettings: View {
                             .disabled(!enableLockScreenMediaWidget)
                             .settingsHighlight(id: highlightID("Use enhanced liquid border"))
                             variantSlider(
-                                title: "Music panel variant",
+                                title: "Music panel glass opacity",
                                 value: musicVariantBinding,
                                 currentValue: lockScreenMusicLiquidGlassVariant.rawValue,
                                 isEnabled: enableLockScreenMediaWidget,
@@ -5903,7 +5948,31 @@ struct LockScreenSettings: View {
                                     LockScreenGlassVariantPreviewCell(variant: $lockScreenMusicLiquidGlassVariant)
                                 )
                             )
-                            Text("Timer and weather widgets keep their own liquid-mode pickers and sliders on the Widgets page.")
+                            if lockScreenWeatherPanelGlass {
+                                variantSlider(
+                                    title: "Weather glass opacity",
+                                    value: weatherVariantBinding,
+                                    currentValue: weatherGlassVariant.rawValue,
+                                    isEnabled: true,
+                                    highlight: highlightID("Weather panel variant"),
+                                    preview: AnyView(
+                                        LockScreenGlassVariantPreviewCell(variant: $weatherGlassVariant)
+                                    )
+                                )
+                            }
+                            if lockScreenReminderPanelGlass {
+                                variantSlider(
+                                    title: "Reminder glass opacity",
+                                    value: reminderVariantBinding,
+                                    currentValue: reminderGlassVariant.rawValue,
+                                    isEnabled: true,
+                                    highlight: highlightID("Reminder panel variant"),
+                                    preview: AnyView(
+                                        LockScreenGlassVariantPreviewCell(variant: $reminderGlassVariant)
+                                    )
+                                )
+                            }
+                            Text("The slider fades the panel glass from fully transparent (left) to fully opaque (right). The timer widget keeps its own liquid-mode picker and slider on the Widgets page.")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
@@ -6458,9 +6527,10 @@ extension LockScreenSettings {
             HStack {
                 Text(title)
                 Spacer()
-                Text("v\(currentValue)")
+                Text("\(Int((Double(currentValue) / Double(LiquidGlassVariant.supportedRange.upperBound) * 100).rounded()))%")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .monospacedDigit()
             }
             Slider(value: value, in: liquidVariantRange, step: 1)
 
@@ -6568,14 +6638,19 @@ private struct LockScreenGlassVariantPreviewCell: View {
     }
 
     private var liquidGlassPreview: some View {
-        LiquidGlassBackground(
-            variant: variant,
-            cornerRadius: previewCornerRadius
-        ) {
-            Color.white.opacity(0.04)
-        }
-        .frame(width: previewSize.width, height: previewSize.height)
-        .shadow(color: Color.black.opacity(0.2), radius: 10, x: 0, y: 6)
+        // Deliberately NOT LiquidGlassBackground: Apple's glass samples the
+        // desktop *behind the settings window*, so the live material here
+        // would show whatever happens to be under the window - nothing like
+        // glass over the lock screen wallpaper. A regular material blurs its
+        // in-window backdrop (the mock wallpaper below) and fades with the
+        // exact same alpha the panels use, so this preview is the same
+        // composite: wallpaper blur + tint at `backgroundOpacity`.
+        RoundedRectangle(cornerRadius: previewCornerRadius, style: .continuous)
+            .fill(.regularMaterial)
+            .overlay(Color.white.opacity(0.04))
+            .opacity(variant.backgroundOpacity)
+            .frame(width: previewSize.width, height: previewSize.height)
+            .shadow(color: Color.black.opacity(0.2), radius: 10, x: 0, y: 6)
     }
 }
 
@@ -9063,11 +9138,12 @@ struct CustomOSDSettings: View {
                             if osdLiquidGlassCustomizationMode == .customLiquid {
                                 VStack(alignment: .leading, spacing: 6) {
                                     HStack {
-                                        Text("Custom liquid variant")
+                                        Text("Glass opacity")
                                         Spacer()
-                                        Text("v\(osdLiquidGlassVariant.rawValue)")
+                                        Text("\(Int((Double(osdLiquidGlassVariant.rawValue) / Double(LiquidGlassVariant.supportedRange.upperBound) * 100).rounded()))%")
                                             .font(.caption)
                                             .foregroundStyle(.secondary)
+                                            .monospacedDigit()
                                     }
                                     Slider(value: osdLiquidVariantBinding, in: liquidVariantRange, step: 1)
                                 }

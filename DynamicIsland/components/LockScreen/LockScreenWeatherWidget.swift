@@ -43,6 +43,10 @@ struct LockScreenWeatherWidget: View {
 	@Default(.lockScreenReminderChipStyle) private var lockScreenReminderChipStyle
 	@Default(.reminderSneakPeekDuration) private var reminderSneakPeekDuration
 	@Default(.lockScreenWidgetAppearance) private var appearance
+	@Default(.lockScreenWeatherPanelGlass) private var weatherPanelGlassEnabled
+	@Default(.lockScreenWeatherLiquidGlassVariant) private var weatherPanelGlassVariant
+	@Default(.lockScreenGlassStyle) private var lockScreenGlassStyle
+	@Default(.lockScreenGlassCustomizationMode) private var lockScreenGlassCustomizationMode
 
 	@State private var currentTime = Date()
 	@State private var calendarRowVisible: Bool = false
@@ -489,6 +493,28 @@ struct LockScreenWeatherWidget: View {
 		appearance.primary(opacity: 0.9)
 	}
 
+	// Glass panel behind the widget; off by default so the classic
+	// text-on-wallpaper look is untouched unless the user opts in.
+	@ViewBuilder
+	private var panelGlassBackground: some View {
+		if weatherPanelGlassEnabled {
+			if lockScreenGlassStyle == .liquid {
+				LiquidGlassBackground(
+					variant: .defaultVariant,
+					cornerRadius: 16,
+					opacity: lockScreenGlassCustomizationMode == .customLiquid
+						? weatherPanelGlassVariant.backgroundOpacity
+						: 1.0
+				) {
+					Color.white.opacity(0.04)
+				}
+			} else {
+				RoundedRectangle(cornerRadius: 16, style: .continuous)
+					.fill(.ultraThinMaterial)
+			}
+		}
+	}
+
 	var body: some View {
 		VStack(alignment: .leading, spacing: focusWidgetSpacing) {
 			ForEach(Array(enabledRowKinds.enumerated()), id: \.offset) { index, kind in
@@ -503,7 +529,7 @@ struct LockScreenWeatherWidget: View {
 		.padding(.horizontal, 10)
 		.padding(.top, topPadding)
 		.padding(.bottom, bottomPadding)
-		.background(Color.clear)
+		.background(panelGlassBackground)
 		.shadow(color: appearance.contentShadow, radius: 8, x: 0, y: 3)
 		.onReceive(minuteTicker.$now) { currentTime = $0 }
 		.onAppear {

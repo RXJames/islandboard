@@ -164,8 +164,9 @@ struct CustomOSDView: View {
             if #available(macOS 26.0, *) {
                 if osdLiquidGlassCustomizationMode == .customLiquid {
                     LiquidGlassBackground(
-                        variant: osdLiquidGlassVariant,
-                        cornerRadius: 18
+                        variant: .defaultVariant,
+                        cornerRadius: 18,
+                        opacity: osdLiquidGlassVariant.backgroundOpacity
                     ) {
                         Color.white.opacity(0.04)
                     }
