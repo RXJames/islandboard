@@ -33,6 +33,8 @@ struct IdleAnimationsSettingsSection: View {
     @Default(.customIdleAnimations) var customIdleAnimations
     @Default(.selectedIdleAnimation) var selectedIdleAnimation
     @Default(.showNotHumanFace) var showNotHumanFace
+    @Default(.idlePetWalking) var idlePetWalking
+    @Default(.idlePetSizeScale) var idlePetSizeScale
     
     @State private var showingFilePicker = false
     @State private var showingURLSheet = false
@@ -111,6 +113,37 @@ struct IdleAnimationsSettingsSection: View {
                     .padding(.horizontal, 4)
                 }
                 .frame(height: 140)
+
+                VStack(alignment: .leading, spacing: 10) {
+                    Toggle(isOn: $idlePetWalking) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Walking pet")
+                            Text("Lets the pet leave the notch and patrol the menu bar. Drag it back onto the notch to tuck it in; it wanders out again after a rest.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .disabled(selectedIdleAnimation == nil)
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Text("Pet size")
+                            Spacer()
+                            Text("\(Int((idlePetSizeScale * 100).rounded()))%")
+                                .font(.caption.monospacedDigit())
+                                .foregroundStyle(.secondary)
+                        }
+                        Slider(value: Binding(
+                            get: { Double(idlePetSizeScale) },
+                            set: { idlePetSizeScale = CGFloat($0) }
+                        ), in: 0.4...1.0)
+                        .disabled(selectedIdleAnimation == nil)
+                        Text("100% makes the pet sit flush against the notch edge; it never covers the camera cutout.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .padding(.vertical, 8)
             } else {
                 Text("Enable \"Idle Animation\" to customize animations")
                     .font(.caption)

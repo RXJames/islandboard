@@ -268,6 +268,10 @@ struct ContentView: View {
     @Default(.useMusicVisualizer) var useMusicVisualizer
     @Default(.musicControlWindowEnabled) var musicControlWindowEnabled
     @Default(.showNotHumanFace) var showNotHumanFace
+    @Default(.idlePetWalking) private var idlePetWalking
+    @Default(.idlePetSizeScale) private var idlePetSizeScale
+    @Default(.selectedIdleAnimation) private var selectedIdleAnimation
+    @ObservedObject private var idlePet = IdlePetWindowManager.shared
     @Default(.useModernCloseAnimation) var useModernCloseAnimation
     @Default(.enableMinimalisticUI) var enableMinimalisticUI
 
@@ -1006,14 +1010,28 @@ struct ContentView: View {
                 handleMusicControlIdleChange(isIdle: isIdle)
             }
             .onChange(of: vm.closedNotchSize) { _, _ in
+                syncIdlePet()
                 if shouldShowMusicControlWindow() {
                     enqueueMusicControlWindowSync(forceRefresh: true)
                 }
             }
             .onChange(of: vm.effectiveClosedNotchHeight) { _, _ in
+                syncIdlePet()
                 if shouldShowMusicControlWindow() {
                     enqueueMusicControlWindowSync(forceRefresh: true)
                 }
+            }
+            .onChange(of: idlePetWalking) { _, _ in
+                syncIdlePet()
+            }
+            .onChange(of: idlePetSizeScale) { _, _ in
+                syncIdlePet()
+            }
+            .onChange(of: selectedIdleAnimation) { _, _ in
+                syncIdlePet()
+            }
+            .onAppear {
+                syncIdlePet()
             }
             .onAppear {
                 if vm.notchState == .closed { menuBarLayout.startTracking() }
@@ -1381,16 +1399,30 @@ struct ContentView: View {
         return formatter
     }()
 
+    /// Keeps the walking pet's inputs current: which toggle/scale is set and
+    /// where this machine's notch sits in screen coordinates.
+    private func syncIdlePet() {
+        let screen = NSScreen.screens.first(where: { $0.localizedName == vm.screen }) ?? NSScreen.main
+        var notchRect: CGRect?
+        if let screen {
+            let w = vm.closedNotchSize.width
+            let h = vm.effectiveClosedNotchHeight
+            notchRect = CGRect(x: screen.frame.midX - w / 2, y: screen.frame.maxY - h, width: w, height: h)
+        }
+        idlePet.sync(.init(enabled: idlePetWalking,
+                           hasAnimation: selectedIdleAnimation != nil,
+                           scale: idlePetSizeScale,
+                           notchRect: notchRect))
+    }
+
     @ViewBuilder
     func DynamicIslandFaceAnimation() -> some View {
-        // The pet's box follows the notch's face: the closed notch is a
-        // rounded trapezoid, so this uses its area (width * height, square
-        // rooted back into a side length) rather than just the height, plus
-        // a flat bump so the animal reads at a glance. Height still caps
-        // the box so the pet cannot poke out of a tall-and-narrow notch.
-        let area = max(1, vm.closedNotchSize.width * vm.effectiveClosedNotchHeight)
-        let areaSide = (area.squareRoot() * 1.15).rounded()
-        let sideSize = min(max(0, vm.effectiveClosedNotchHeight - 6), max(24, areaSide))
+        // The pet's box follows the notch's face (see IdlePetGeometry): area
+        // driven, height-capped so it never crowds the camera cutout, with
+        // the user's slider riding on top - 100% means "as big as the cap".
+        let sideSize = IdlePetGeometry.faceSide(notchWidth: vm.closedNotchSize.width,
+                                                notchHeight: vm.effectiveClosedNotchHeight,
+                                                scale: idlePetSizeScale)
         HStack {
             HStack {
                 Rectangle()
@@ -1399,8 +1431,15 @@ struct ContentView: View {
                 Rectangle()
                     .fill(.black)
                     .frame(width: max(0, vm.closedNotchSize.width - 20 - sideSize * 2))
-                IdleAnimationView(fittingSize: CGSize(width: sideSize, height: sideSize))
-                    .frame(width: sideSize, height: sideSize)
+                // While walking, the pet lives in its own menu-bar window;
+                // it only redraws on the face while resting inside the notch.
+                if !idlePetWalking || idlePet.petShownInNotchFace {
+                    IdleAnimationView(fittingSize: CGSize(width: sideSize, height: sideSize))
+                        .frame(width: sideSize, height: sideSize)
+                } else {
+                    Color.clear
+                        .frame(width: sideSize, height: sideSize)
+                }
             }
         }.frame(height: vm.effectiveClosedNotchHeight + (isHovering ? 8 : 0), alignment: .center)
     }

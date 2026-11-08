@@ -1031,6 +1031,8 @@ extension Defaults.Keys {
     static let showNotHumanFace = Key<Bool>("showNotHumanFace", default: false)
     static let customIdleAnimations = Key<[CustomIdleAnimation]>("customIdleAnimations", default: [])
     static let selectedIdleAnimation = Key<CustomIdleAnimation?>("selectedIdleAnimation", default: nil)
+    static let idlePetWalking = Key<Bool>("idlePetWalking", default: false)
+    static let idlePetSizeScale = Key<CGFloat>("idlePetSizeScale", default: 1.0)
     static let animationTransformOverrides = Key<[String: AnimationTransformConfig]>("animationTransformOverrides", default: [:])
     static let tileShowLabels = Key<Bool>("tileShowLabels", default: false)
     static let showCalendar = Key<Bool>("showCalendar", default: true)
