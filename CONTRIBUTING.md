@@ -1,7 +1,3 @@
-<p align="center">
-	<img src=".github/assets/islandboard-logo.png" alt="IslandBoard logo" width="100">
-</p>
-
 # Contributing to IslandBoard
 
 Thanks for wanting to improve IslandBoard! Contributions of every kind are welcome — code, design, testing, documentation and translations. This guide explains how to get set up and how to get your work merged.

@@ -1,26 +1,8 @@
-<div align="center">
-
-<img src=".github/assets/islandboard-logo.png" alt="IslandBoard logo" width="128">
-
 # IslandBoard
 
 **Turn the MacBook notch into a command surface.**
 
 Media, system insight, widgets and quick utilities — one hover away.
-
-[![macOS](https://img.shields.io/badge/macOS-14.6%2B-000000?style=flat-square&logo=apple&logoColor=white)](#requirements)
-[![Swift](https://img.shields.io/badge/Swift-5-F05138?style=flat-square&logo=swift&logoColor=white)](#requirements)
-[![Rust](https://img.shields.io/badge/core-Rust-000000?style=flat-square&logo=rust&logoColor=white)](#building-the-rust-core)
-[![License](https://img.shields.io/badge/license-GPL--3.0-blue?style=flat-square)](LICENSE)
-[![Stars](https://img.shields.io/github/stars/RXJames/islandboard?style=flat-square&logo=github)](https://github.com/RXJames/islandboard/stargazers)
-[![Issues](https://img.shields.io/github/issues/RXJames/islandboard?style=flat-square)](https://github.com/RXJames/islandboard/issues)
-[![Last commit](https://img.shields.io/github/last-commit/RXJames/islandboard?style=flat-square)](https://github.com/RXJames/islandboard/commits/main)
-
-</div>
-
-<p align="center">
-  <img src="https://i.postimg.cc/t49mW5yN/Screenshot-2026-03-02-at-6-00-22-PM.png" alt="IslandBoard lock screen widgets" width="900">
-</p>
 
 IslandBoard is a native macOS app that lives in the notch. It stays out of the way
 until you need it, then expands into a responsive SwiftUI surface for playback
@@ -37,7 +19,6 @@ feed. All original work remains © the Atoll Contributors — see
 
 - [Highlights](#highlights)
 - [Feature tour](#feature-tour)
-- [Screenshots](#screenshots)
 - [Requirements](#requirements)
 - [Installation](#installation)
 - [Building from source](#building-from-source)
@@ -101,16 +82,6 @@ feed. All original work remains © the Atoll Contributors — see
 - Third-party apps can publish live activities, lock screen widgets and full notch
   experiences through [`AtollExtensionKit`](https://github.com/Ebullioscopic/AtollExtensionKit),
   talking to the app over an authenticated XPC/WebSocket bridge.
-
-## Screenshots
-
-<p align="center">
-  <img src="https://i.postimg.cc/HkLGn6yH/846F86A4_A2F9_4CD6_BC84_1D720D377728_1_201_a.jpg" alt="IslandBoard expanded notch" width="900">
-</p>
-
-<p align="center">
-  <img src="https://i.postimg.cc/t49mW5yN/Screenshot-2026-03-02-at-6-00-22-PM.png" alt="IslandBoard lock screen" width="900">
-</p>
 
 ## Requirements
 
