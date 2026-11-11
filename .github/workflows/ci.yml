@@ -39,6 +39,39 @@ jobs:
         with:
           xcode-version: latest-stable
 
+      - name: Set up Rust
+        # atoll-core is a Rust static library; a clean checkout builds it
+        # through the "Build atoll-core (Rust)" Xcode phase. This step makes
+        # the toolchain available (and pinned by atoll-core/rust-toolchain.toml).
+        run: |
+          if ! command -v cargo >/dev/null 2>&1; then
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+              | sh -s -- -y --profile minimal
+          fi
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          ( cd atoll-core && "$HOME/.cargo/bin/rustup" show )
+          ( cd atoll-core && "$HOME/.cargo/bin/cargo" --version )
+
+      - name: Cache Rust build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.rustup
+            atoll-core/target
+          key: rust-${{ runner.os }}-${{ hashFiles('atoll-core/Cargo.lock', 'atoll-core/rust-toolchain.toml') }}
+          restore-keys: |
+            rust-${{ runner.os }}-
+
+      - name: Test and build Rust core
+        # Run from atoll-core so rustup picks up rust-toolchain.toml and cargo
+        # resolves Cargo.lock (--locked fails instead of silently updating it).
+        working-directory: atoll-core
+        run: |
+          cargo test --locked
+          cargo build --locked --release --target aarch64-apple-darwin
+
       - name: Validate privacy configuration
         run: python3 -m unittest tests.test_privacy_configuration
 

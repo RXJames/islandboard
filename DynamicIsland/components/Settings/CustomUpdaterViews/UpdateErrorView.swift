@@ -1,5 +1,5 @@
 /*
- * Atoll (DynamicIsland)
+ * IslandBoard (DynamicIsland)
  * Copyright (C) 2024-2026 Atoll Contributors
  *
  * This program is free software: you can redistribute it and/or modify
@@ -70,7 +70,7 @@ struct UpdateErrorView: View {
                 .foregroundStyle(.primary)
 
             // Error message
-            Text(state.errorMessage ?? "An unknown error occurred while updating Atoll.")
+            Text(state.errorMessage ?? "An unknown error occurred while updating IslandBoard.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)

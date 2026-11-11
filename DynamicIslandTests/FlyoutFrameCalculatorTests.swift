@@ -1,5 +1,5 @@
 /*
- * Atoll (DynamicIsland)
+ * IslandBoard (DynamicIsland)
  * Copyright (C) 2024-2026 Atoll Contributors
  *
  * This program is free software: you can redistribute it and/or modify
@@ -19,7 +19,7 @@
 #if os(macOS)
 import AppKit
 import XCTest
-@testable import Atoll
+@testable import IslandBoard
 
 final class FlyoutFrameCalculatorTests: XCTestCase {
 

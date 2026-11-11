@@ -1,5 +1,5 @@
 /*
- * Atoll (DynamicIsland)
+ * IslandBoard (DynamicIsland)
  * Copyright (C) 2024-2026 Atoll Contributors
  *
  * This program is free software: you can redistribute it and/or modify
@@ -99,7 +99,7 @@ class DynamicIslandViewCoordinator: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
     private var hoverOpenSuppressedUntil: Date = .distantPast
     
-    private static let tabOrder: [NotchViews] = [.home, .shelf, .timer, .stats, .llmUsage, .colorPicker, .notes, .clipboard, .terminal, .extensionExperience]
+    private static let tabOrder: [NotchViews] = [.home, .shelf, .timer, .stats, .monitor, .llmUsage, .controlCenter, .colorPicker, .notes, .clipboard, .terminal, .extensionExperience]
     
     /// Direction of the most recent tab switch (true = forward/right, false = backward/left)
     @Published var tabSwitchForward: Bool = true
@@ -120,6 +120,9 @@ class DynamicIslandViewCoordinator: ObservableObject {
     
     @Published var statsSecondRowExpansion: CGFloat = 1
     @Published var notesLayoutState: NotesLayoutState = .list
+    /// Control Center tab reports its fitted height here (tile rows + edit
+    /// strip); the notch grows to at least this while that tab is open.
+    @Published var controlCenterPreferredHeight: CGFloat = 260
     @Published var selectedExtensionExperienceID: String?
     
     

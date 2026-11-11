@@ -1,5 +1,5 @@
 /*
- * Atoll (DynamicIsland)
+ * IslandBoard (DynamicIsland)
  * Copyright (C) 2024-2026 Atoll Contributors
  *
  * This program is free software: you can redistribute it and/or modify
@@ -30,7 +30,7 @@ enum AppleNotesSyncError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .automationDenied:
-            return String(localized: "Allow Atoll to control Notes in System Settings → Privacy & Security → Automation.")
+            return String(localized: "Allow IslandBoard to control Notes in System Settings → Privacy & Security → Automation.")
         case .scriptFailed(let message):
             return message
         }
@@ -57,7 +57,7 @@ final class AppleNotesSyncManager: ObservableObject {
     @Published private(set) var isSyncing = false
     @Published private(set) var lastError: String?
 
-    private static let syncFolderName = "Atoll"
+    private static let syncFolderName = "IslandBoard"
     static let fieldSeparator = "\u{241F}"
     static let recordSeparator = "\u{241E}"
     private static let atollTagPattern = #"<!--atoll:id=([0-9A-Fa-f-]{36})-->"#
@@ -281,7 +281,7 @@ final class AppleNotesSyncManager: ObservableObject {
         // Notes.app has no "deleted" AppleScript flag: soft-deleted notes keep
         // being enumerated from the "Recently Deleted" folder, which is only
         // identifiable by its (localized) name. Enumerating them as live is what
-        // used to keep deleted notes alive in Atoll forever, so the folder is
+        // used to keep deleted notes alive in IslandBoard forever, so the folder is
         // skipped by the per-locale name list Apple ships.
         let trashNames = [
             "Recently Deleted", "最近删除", "最近刪除", "Supprimés récemment",

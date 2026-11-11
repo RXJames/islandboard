@@ -1,5 +1,5 @@
 /*
- * Atoll (DynamicIsland)
+ * IslandBoard (DynamicIsland)
  * Copyright (C) 2024-2026 Atoll Contributors
  *
  * This program is free software: you can redistribute it and/or modify
@@ -18,7 +18,7 @@
 
 import Foundation
 
-/// Bridges extension payload updates between Atoll processes (main app, helpers, XPC services).
+/// Bridges extension payload updates between IslandBoard processes (main app, helpers, XPC services).
 /// Stores the latest snapshot on disk and delivers change notifications through DistributedNotificationCenter.
 final class ExtensionEventBridge {
     static let shared = ExtensionEventBridge()

@@ -47,10 +47,10 @@ enum ClaudeKeychainTests {
         let secret = #"{"claudeAiOauth":{"accessToken":"FAKE-not-a-token","refreshToken":"FAKE-refresh","expiresAt":42},"mcpOAuth":{"note":"quotes: \" backslash: \\ unicode: 中文"}}"#
         for cycle in 1...3 {
             let updated = secret + String(repeating: " ", count: cycle)
-            try require(ClaudeKeychainStore.update(service: service, account: account, secret: updated) == nil, "Atoll write \(cycle)")
+            try require(ClaudeKeychainStore.update(service: service, account: account, secret: updated) == nil, "IslandBoard write \(cycle)")
             let actual = ClaudeKeychainStore.read(service: service, account: account)
             try require(actual == updated, "exact round trip \(cycle)")
-            try require(try partitionIDs(service: service, account: account) == initialPartitions, "partitions survive Atoll write \(cycle)")
+            try require(try partitionIDs(service: service, account: account) == initialPartitions, "partitions survive IslandBoard write \(cycle)")
 
             let ownerValue = "fake-owner-refresh-\(cycle)"
             try require(security(["add-generic-password", "-U", "-s", service, "-a", account, "-w", ownerValue]).status == 0,
@@ -68,7 +68,7 @@ enum ClaudeKeychainTests {
                 "command injection rejected")
         try require(ClaudeKeychainStore.updateCommand(service: service, account: nil, secret: "fake") == nil,
                 "unscoped update rejected")
-        print("PASS: three Atoll/owner round trips, unchanged partition permissions, exact payload, account isolation, missing/oversized/invalid input")
+        print("PASS: three IslandBoard/owner round trips, unchanged partition permissions, exact payload, account isolation, missing/oversized/invalid input")
     }
 
     /// Refuses unavailable or locked test environments before creating any item.

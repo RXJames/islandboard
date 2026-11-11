@@ -1,5 +1,5 @@
 /*
- * Atoll (DynamicIsland)
+ * IslandBoard (DynamicIsland)
  * Copyright (C) 2024-2026 Atoll Contributors
  *
  * This program is free software: you can redistribute it and/or modify
@@ -17,7 +17,7 @@
  */
 
 import XCTest
-@testable import Atoll
+@testable import IslandBoard
 
 /// Finding the playing track again in NetEase's catalogue from nothing but
 /// the metadata a player publishes.
@@ -143,6 +143,12 @@ final class NetEaseLyricsTests: XCTestCase {
 
     // MARK: - Building requests
 
+    func testSearchUsesPlaintextEndpoint() throws {
+        let url = try XCTUnwrap(NetEaseLyrics.searchURL(title: "晴天", artist: "周杰伦"))
+        XCTAssertEqual(url.path, "/api/search/get")
+        XCTAssertFalse(url.path.hasSuffix("/web"))
+    }
+
     func testSearchQueryEscapesStructuralCharacters() throws {
         let url = try XCTUnwrap(NetEaseLyrics.searchURL(title: "Snow + Rain & Sun", artist: "A/B"))
         let query = try XCTUnwrap(URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems)
@@ -160,5 +166,26 @@ final class NetEaseLyricsTests: XCTestCase {
 
     func testEmptyQueryBuildsNoRequest() {
         XCTAssertNil(NetEaseLyrics.searchURL(title: "  ", artist: ""))
+    }
+
+    // MARK: - Media source
+
+
+    func testLyricsSessionIsIsolated() {
+        let configuration = NetEaseLyrics.session.configuration
+        XCTAssertNil(configuration.httpCookieStorage)
+        XCTAssertNil(configuration.urlCache)
+        XCTAssertFalse(configuration.httpShouldSetCookies)
+    }
+
+    func testNetEaseMediaControllerMetadata() {
+        XCTAssertEqual(NetEaseMusicController.bundleIdentifier, "com.netease.163music")
+        XCTAssertEqual(MediaControllerType.neteaseMusic.localizedName, "NetEase Music")
+
+        let capability = MediaSourceCapabilities.entry(for: .neteaseMusic)
+        XCTAssertEqual(capability.name, "NetEase Music")
+        XCTAssertEqual(capability.favoriting, .none)
+        XCTAssertEqual(capability.shuffle, .none)
+        XCTAssertEqual(capability.repeatMode, .none)
     }
 }

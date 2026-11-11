@@ -1,5 +1,5 @@
 /*
- * Atoll (DynamicIsland)
+ * IslandBoard (DynamicIsland)
  * Copyright (C) 2024-2026 Atoll Contributors
  *
  * This program is free software: you can redistribute it and/or modify
@@ -26,7 +26,7 @@ import SwiftUI
 /// does, by holding an IOKit power assertion.
 ///
 /// The assertion is held by this process, so it is released automatically if
-/// Atoll exits for any reason -- there is no way to leave the Mac permanently
+/// IslandBoard exits for any reason -- there is no way to leave the Mac permanently
 /// caffeinated by crashing.
 @MainActor
 final class CaffeinateManager: ObservableObject {
@@ -152,7 +152,7 @@ final class CaffeinateManager: ObservableObject {
 
     // MARK: - Pure helpers
 
-    private static let assertionReason = "Atoll is keeping this Mac awake"
+    private static let assertionReason = "IslandBoard is keeping this Mac awake"
 
     /// The moment a session started at `start` should end, or `nil` when the
     /// session never expires on its own.

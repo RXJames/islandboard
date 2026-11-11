@@ -1,5 +1,5 @@
 /*
- * Atoll (DynamicIsland)
+ * IslandBoard (DynamicIsland)
  * Copyright (C) 2024-2026 Atoll Contributors
  *
  * This program is free software: you can redistribute it and/or modify
@@ -40,7 +40,7 @@ struct AudioApp: Identifiable, Equatable {
 ///
 /// A tap is only created for an app whose level actually differs from the
 /// system default. Apps left at 100% and unmuted keep their normal, untouched
-/// path to the output device -- Atoll does not insert itself into the audio of
+/// path to the output device -- IslandBoard does not insert itself into the audio of
 /// every app on the Mac just to show it in a list.
 @MainActor
 final class PerAppVolumeManager: ObservableObject {
@@ -220,7 +220,7 @@ final class PerAppVolumeManager: ObservableObject {
             guard let rawIdentifier = AudioProcessQuery.bundleIdentifier(for: processObject) else { continue }
 
             let identifier = Self.canonicalBundleIdentifier(rawIdentifier, among: runningIdentifiers)
-            // Atoll's own output would mean tapping ourselves.
+            // IslandBoard's own output would mean tapping ourselves.
             guard identifier != Bundle.main.bundleIdentifier else { continue }
 
             processesByIdentifier[identifier, default: []].append(processObject)

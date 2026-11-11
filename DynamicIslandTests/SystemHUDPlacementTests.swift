@@ -1,5 +1,5 @@
 /*
- * Atoll (DynamicIsland)
+ * IslandBoard (DynamicIsland)
  * Copyright (C) 2024-2026 Atoll Contributors
  *
  * This program is free software: you can redistribute it and/or modify
@@ -18,7 +18,7 @@
 
 import XCTest
 
-@testable import Atoll
+@testable import IslandBoard
 
 /// Which HUD can be drawn depends on whether the Mac is locked, and getting it
 /// wrong is silent: the keys simply do nothing, because this app has already

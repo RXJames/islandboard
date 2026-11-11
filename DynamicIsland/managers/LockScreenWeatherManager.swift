@@ -1,5 +1,5 @@
 /*
- * Atoll (DynamicIsland)
+ * IslandBoard (DynamicIsland)
  * Copyright (C) 2024-2026 Atoll Contributors
  *
  * This program is free software: you can redistribute it and/or modify
@@ -26,10 +26,16 @@ final class LockScreenWeatherManager: ObservableObject {
     static let shared = LockScreenWeatherManager()
 
     @Published private(set) var snapshot: LockScreenWeatherSnapshot?
+    /// Independent Home-tab forecast. Deliberately separate from `snapshot`:
+    /// the Home strip can use a chosen city and a different display mode without
+    /// changing what the lock-screen weather widget shows.
+    @Published private(set) var homeSnapshot: LockScreenWeatherSnapshot?
 
     private let provider = LockScreenWeatherProvider()
     private let locationProvider = LockScreenWeatherLocationProvider()
     private var lastFetchDate: Date?
+    private var lastHomeFetchDate: Date?
+    private var homeFetchID = UUID()
     private var latestWeatherPayload: LockScreenWeatherSnapshot?
     private var cancellables = Set<AnyCancellable>()
 
@@ -163,6 +169,63 @@ final class LockScreenWeatherManager: ObservableObject {
             deliver(fallback, forceShow: false)
             return fallback
         }
+    }
+
+    @discardableResult
+    func refreshHomeWeather(force: Bool = false) async -> LockScreenWeatherSnapshot? {
+        guard Defaults[.enableHomeWeather] else {
+            clearHomeWeather()
+            return nil
+        }
+
+        let requestID = UUID()
+        homeFetchID = requestID
+
+        let interval: TimeInterval = 15 * 60
+        if !force,
+           let lastHomeFetchDate,
+           Date().timeIntervalSince(lastHomeFetchDate) < interval,
+           let homeSnapshot {
+            return homeSnapshot
+        }
+
+        let location: CLLocation?
+        switch Defaults[.homeWeatherLocationMode] {
+        case .currentLocation:
+            locationProvider.prepareAuthorization()
+            location = await locationProvider.currentLocation()
+        case .city:
+            let latitude = Defaults[.homeWeatherCityLatitude]
+            let longitude = Defaults[.homeWeatherCityLongitude]
+            let name = Defaults[.homeWeatherCityName]
+            guard !name.isEmpty,
+                  (-90...90).contains(latitude),
+                  (-180...180).contains(longitude)
+            else {
+                homeSnapshot = nil
+                return nil
+            }
+            location = CLLocation(latitude: latitude, longitude: longitude)
+        }
+
+        guard let location, homeFetchID == requestID else { return homeSnapshot }
+
+        do {
+            let snapshot = try await provider.fetchSnapshot(location: location, source: .openMeteo)
+            guard homeFetchID == requestID else { return homeSnapshot }
+            homeSnapshot = snapshot
+            lastHomeFetchDate = Date()
+            return snapshot
+        } catch {
+            NSLog("HomeWeatherManager: refresh failed: %@", error.localizedDescription)
+            return homeSnapshot
+        }
+    }
+
+    func clearHomeWeather() {
+        homeFetchID = UUID()
+        homeSnapshot = nil
+        lastHomeFetchDate = nil
     }
 
     private func fetchWeatherPayload(location: CLLocation?) async throws -> LockScreenWeatherSnapshot {
@@ -485,6 +548,23 @@ struct LockScreenWeatherSnapshot: Equatable {
         let usesLaptopSymbol: Bool
     }
 
+    struct HourlyForecast: Equatable, Identifiable {
+        let date: Date
+        let temperature: Double
+        let symbolName: String
+        let precipitationProbability: Int?
+        var id: Date { date }
+    }
+
+    struct DailyForecast: Equatable, Identifiable {
+        let date: Date
+        let minimum: Double
+        let maximum: Double
+        let symbolName: String
+        let precipitationProbability: Int?
+        var id: Date { date }
+    }
+
     struct AirQualityInfo: Equatable {
         enum Category: String, Equatable {
             case good
@@ -536,6 +616,12 @@ struct LockScreenWeatherSnapshot: Equatable {
     let usesGaugeTint: Bool
     let sunCycle: SunCycleInfo?
     let showsSunrise: Bool
+    /// Forecast arrays are populated by the Open-Meteo provider; other
+    /// providers may leave them empty, in which case the Home strip shows an
+    /// explicit unavailable state instead of inventing values.
+    var hourlyForecast: [HourlyForecast] = []
+    var dailyForecast: [DailyForecast] = []
+    var forecastTimeZoneIdentifier: String? = nil
 }
 
 extension LockScreenWeatherSnapshot.AirQualityInfo.Category {
@@ -714,8 +800,9 @@ private actor LockScreenWeatherProvider {
             URLQueryItem(name: "latitude", value: latitude),
             URLQueryItem(name: "longitude", value: longitude),
             URLQueryItem(name: "current", value: "temperature_2m,weather_code,is_day,pressure_msl"),
-            URLQueryItem(name: "daily", value: "temperature_2m_max,temperature_2m_min,sunrise,sunset"),
-            URLQueryItem(name: "forecast_days", value: "2"),
+            URLQueryItem(name: "hourly", value: "temperature_2m,weather_code,is_day,precipitation_probability"),
+            URLQueryItem(name: "daily", value: "temperature_2m_max,temperature_2m_min,weather_code,precipitation_probability_max,sunrise,sunset"),
+            URLQueryItem(name: "forecast_days", value: "7"),
             URLQueryItem(name: "timezone", value: "auto")
         ]
 
@@ -775,6 +862,15 @@ private actor LockScreenWeatherProvider {
             airQualityInfo = try? await fetchOpenMeteoAirQuality(latitude: latitude, longitude: longitude, scale: selectedScale)
         }
 
+        let hourlyForecast = makeHourlyForecast(
+            payload: weatherPayload,
+            timezoneIdentifier: timezoneIdentifier
+        )
+        let dailyForecast = makeDailyForecast(
+            payload: weatherPayload,
+            timezoneIdentifier: timezoneIdentifier
+        )
+
         return LockScreenWeatherSnapshot(
             temperatureText: temperatureText,
             symbolName: symbolName,
@@ -790,8 +886,87 @@ private actor LockScreenWeatherProvider {
             temperatureInfo: temperatureInfo,
             usesGaugeTint: true,
             sunCycle: sunCycle,
-            showsSunrise: false
+            showsSunrise: false,
+            hourlyForecast: hourlyForecast,
+            dailyForecast: dailyForecast,
+            forecastTimeZoneIdentifier: timezoneIdentifier
         )
+    }
+
+    private func makeHourlyForecast(
+        payload: OpenMeteoForecastResponse,
+        timezoneIdentifier: String?
+    ) -> [LockScreenWeatherSnapshot.HourlyForecast] {
+        guard let times = payload.hourly?.time,
+              let temperatures = payload.hourly?.temperature2M
+        else { return [] }
+
+        let weatherCodes = payload.hourly?.weatherCode ?? []
+        let daylight = payload.hourly?.isDay ?? []
+        let precipitation = payload.hourly?.precipitationProbability ?? []
+        var result: [LockScreenWeatherSnapshot.HourlyForecast] = []
+        result.reserveCapacity(min(times.count, temperatures.count))
+
+        for index in times.indices where index < temperatures.count {
+            guard let date = forecastDate(times[index], format: "yyyy-MM-dd'T'HH:mm", timezoneIdentifier: timezoneIdentifier) else {
+                continue
+            }
+            let code = index < weatherCodes.count ? weatherCodes[index] : 0
+            let isDay = (index < daylight.count ? daylight[index] : 1) == 1
+            let mapping = OpenMeteoSymbolMapper.mapping(for: code)
+            let probability = index < precipitation.count ? precipitation[index] : nil
+            result.append(
+                LockScreenWeatherSnapshot.HourlyForecast(
+                    date: date,
+                    temperature: temperatures[index],
+                    symbolName: symbolAdjustedForDaylight(mapping.symbol, isDaytime: isDay),
+                    precipitationProbability: probability
+                )
+            )
+        }
+        return result
+    }
+
+    private func makeDailyForecast(
+        payload: OpenMeteoForecastResponse,
+        timezoneIdentifier: String?
+    ) -> [LockScreenWeatherSnapshot.DailyForecast] {
+        guard let times = payload.daily?.time,
+              let maxima = payload.daily?.temperature2MMax,
+              let minima = payload.daily?.temperature2MMin
+        else { return [] }
+
+        let weatherCodes = payload.daily?.weatherCode ?? []
+        let precipitation = payload.daily?.precipitationProbabilityMax ?? []
+        var result: [LockScreenWeatherSnapshot.DailyForecast] = []
+        result.reserveCapacity(min(times.count, maxima.count, minima.count))
+
+        for index in times.indices where index < maxima.count && index < minima.count {
+            guard let date = forecastDate(times[index], format: "yyyy-MM-dd", timezoneIdentifier: timezoneIdentifier) else {
+                continue
+            }
+            let code = index < weatherCodes.count ? weatherCodes[index] : 0
+            let mapping = OpenMeteoSymbolMapper.mapping(for: code)
+            let probability = index < precipitation.count ? precipitation[index] : nil
+            result.append(
+                LockScreenWeatherSnapshot.DailyForecast(
+                    date: date,
+                    minimum: minima[index],
+                    maximum: maxima[index],
+                    symbolName: mapping.symbol,
+                    precipitationProbability: probability
+                )
+            )
+        }
+        return result
+    }
+
+    private func forecastDate(_ value: String, format: String, timezoneIdentifier: String?) -> Date? {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = timezoneIdentifier.flatMap(TimeZone.init(identifier:)) ?? .current
+        formatter.dateFormat = format
+        return formatter.date(from: value)
     }
 
     private func fetchOpenMeteoAirQuality(latitude: String, longitude: String, scale: LockScreenWeatherAirQualityScale) async throws -> LockScreenWeatherSnapshot.AirQualityInfo? {
@@ -992,12 +1167,25 @@ private struct OpenMeteoForecastResponse: Decodable {
     let timezone: String?
     let utcOffsetSeconds: Int?
 
+    struct Hourly: Decodable {
+        let time: [String]?
+        let temperature2M: [Double]?
+        let weatherCode: [Int]?
+        let isDay: [Int]?
+        let precipitationProbability: [Int?]?
+    }
+
     struct Daily: Decodable {
+        let time: [String]?
         let temperature2MMax: [Double]?
         let temperature2MMin: [Double]?
+        let weatherCode: [Int]?
+        let precipitationProbabilityMax: [Int?]?
         let sunrise: [String]?
         let sunset: [String]?
     }
+
+    let hourly: Hourly?
 }
 
 private struct OpenMeteoAirQualityResponse: Decodable {

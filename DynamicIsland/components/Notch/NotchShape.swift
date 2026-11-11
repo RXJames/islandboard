@@ -1,9 +1,9 @@
 /*
- * Atoll (DynamicIsland)
+ * IslandBoard (DynamicIsland)
  * Copyright (C) 2024-2026 Atoll Contributors
  *
  * Originally from boring.notch project
- * Modified and adapted for Atoll (DynamicIsland)
+ * Modified and adapted for IslandBoard (DynamicIsland)
  * See NOTICE for details.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -48,88 +48,18 @@ struct NotchShape: Shape {
     }
 
     func path(in rect: CGRect) -> Path {
-        var path = Path()
-
-        path.move(
-            to: CGPoint(
-                x: rect.minX,
-                y: rect.minY
-            )
+        // Apple's rounded-rectangle language uses continuous (squircle)
+        // curvature rather than four literal quarter circles. SwiftUI's
+        // UnevenRoundedRectangle gives us independent top/bottom radii while
+        // keeping that continuous corner construction.
+        UnevenRoundedRectangle(
+            topLeadingRadius: topCornerRadius,
+            bottomLeadingRadius: bottomCornerRadius,
+            bottomTrailingRadius: bottomCornerRadius,
+            topTrailingRadius: topCornerRadius,
+            style: .continuous
         )
-
-        path.addQuadCurve(
-            to: CGPoint(
-                x: rect.minX + topCornerRadius,
-                y: rect.minY + topCornerRadius
-            ),
-            control: CGPoint(
-                x: rect.minX + topCornerRadius,
-                y: rect.minY
-            )
-        )
-
-        path.addLine(
-            to: CGPoint(
-                x: rect.minX + topCornerRadius,
-                y: rect.maxY - bottomCornerRadius
-            )
-        )
-
-        path.addQuadCurve(
-            to: CGPoint(
-                x: rect.minX + topCornerRadius + bottomCornerRadius,
-                y: rect.maxY
-            ),
-            control: CGPoint(
-                x: rect.minX + topCornerRadius,
-                y: rect.maxY
-            )
-        )
-
-        path.addLine(
-            to: CGPoint(
-                x: rect.maxX - topCornerRadius - bottomCornerRadius,
-                y: rect.maxY
-            )
-        )
-
-        path.addQuadCurve(
-            to: CGPoint(
-                x: rect.maxX - topCornerRadius,
-                y: rect.maxY - bottomCornerRadius
-            ),
-            control: CGPoint(
-                x: rect.maxX - topCornerRadius,
-                y: rect.maxY
-            )
-        )
-
-        path.addLine(
-            to: CGPoint(
-                x: rect.maxX - topCornerRadius,
-                y: rect.minY + topCornerRadius
-            )
-        )
-
-        path.addQuadCurve(
-            to: CGPoint(
-                x: rect.maxX,
-                y: rect.minY
-            ),
-            control: CGPoint(
-                x: rect.maxX - topCornerRadius,
-                y: rect.minY
-            )
-        )
-
-        path.addLine(
-            to: CGPoint(
-                x: rect.minX,
-                y: rect.minY
-            )
-        )
-
-        return path
+        .path(in: rect)
     }
 }
 

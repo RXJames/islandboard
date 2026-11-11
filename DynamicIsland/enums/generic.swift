@@ -1,9 +1,9 @@
 /*
- * Atoll (DynamicIsland)
+ * IslandBoard (DynamicIsland)
  * Copyright (C) 2024-2026 Atoll Contributors
  *
  * Originally from boring.notch project
- * Modified and adapted for Atoll (DynamicIsland)
+ * Modified and adapted for IslandBoard (DynamicIsland)
  * See NOTICE for details.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -29,7 +29,7 @@ public enum Style {
     case floating
 }
 
-/// Controls how Atoll renders on external and non-notched displays.
+/// Controls how IslandBoard renders on external and non-notched displays.
 /// - `notch`: Standard notch shape (concave top corners blending into the screen edge).
 /// - `dynamicIsland`: Pill-shaped island with continuously rounded corners,
 ///   inspired by DynamicNotchKit's floating style. Only applies to screens
@@ -75,7 +75,9 @@ public enum NotchViews {
     case shelf
     case timer
     case stats
+    case monitor
     case llmUsage
+    case controlCenter
     case colorPicker
     case notes
     case clipboard
@@ -289,6 +291,34 @@ enum LockScreenWeatherTemperatureUnit: String, CaseIterable, Defaults.Serializab
         switch self {
         case .celsius: return String(localized: "Celsius")
         case .fahrenheit: return String(localized: "Fahrenheit")
+        }
+    }
+}
+
+enum HomeWeatherLocationMode: String, CaseIterable, Defaults.Serializable, Identifiable {
+    case currentLocation
+    case city
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .currentLocation: return String(localized: "Current location")
+        case .city: return String(localized: "City")
+        }
+    }
+}
+
+enum HomeWeatherDisplayMode: String, CaseIterable, Defaults.Serializable, Identifiable {
+    case todayOnly
+    case todayAndFiveDays
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .todayOnly: return String(localized: "Today only")
+        case .todayAndFiveDays: return String(localized: "Today + next 5 days")
         }
     }
 }

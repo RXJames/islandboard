@@ -1,5 +1,5 @@
 /*
- * Atoll (DynamicIsland)
+ * IslandBoard (DynamicIsland)
  * Copyright (C) 2024-2026 Atoll Contributors
  *
  * Contract tests for the Rust-backed usage core (UsageCore / atoll-core).
@@ -19,7 +19,7 @@
  */
 
 import XCTest
-@testable import Atoll
+@testable import IslandBoard
 
 final class UsageCoreTests: XCTestCase {
 

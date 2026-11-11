@@ -1,5 +1,5 @@
 /*
- * Atoll (DynamicIsland)
+ * IslandBoard (DynamicIsland)
  * Copyright (C) 2024-2026 Atoll Contributors
  *
  * This program is free software: you can redistribute it and/or modify
@@ -24,7 +24,7 @@ import os.log
 
 private let volumeTapLog = OSLog(subsystem: "com.atoll.dynamicisland", category: "PerAppVolume")
 
-/// Re-routes one app's audio through Atoll so its level can be changed
+/// Re-routes one app's audio through IslandBoard so its level can be changed
 /// independently of the system volume.
 ///
 /// The mechanism is the one macOS gives us for this: a process tap with
@@ -66,7 +66,7 @@ final class AppVolumeTap {
         description.uuid = UUID()
         description.muteBehavior = .mutedWhenTapped
         description.isPrivate = true
-        description.name = "Atoll volume tap for \(bundleIdentifier)"
+        description.name = "IslandBoard volume tap for \(bundleIdentifier)"
 
         var status = AudioHardwareCreateProcessTap(description, &tapID)
         guard status == noErr else {
@@ -74,7 +74,7 @@ final class AppVolumeTap {
         }
 
         let aggregateDescription: [String: Any] = [
-            kAudioAggregateDeviceNameKey: "Atoll-\(bundleIdentifier)",
+            kAudioAggregateDeviceNameKey: "IslandBoard-\(bundleIdentifier)",
             kAudioAggregateDeviceUIDKey: UUID().uuidString,
             kAudioAggregateDeviceMainSubDeviceKey: outputDeviceUID,
             kAudioAggregateDeviceClockDeviceKey: outputDeviceUID,

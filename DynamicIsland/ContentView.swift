@@ -1,9 +1,9 @@
 /*
- * Atoll (DynamicIsland)
+ * IslandBoard (DynamicIsland)
  * Copyright (C) 2024-2026 Atoll Contributors
  *
  * Originally from boring.notch project
- * Modified and adapted for Atoll (DynamicIsland)
+ * Modified and adapted for IslandBoard (DynamicIsland)
  * See NOTICE for details.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -189,6 +189,11 @@ struct ContentView: View {
             return CGSize(width: baseSize.width, height: 250) // Extra height for timer presets
         }
         
+        if coordinator.currentView == .controlCenter {
+            return CGSize(width: baseSize.width,
+                          height: max(baseSize.height, coordinator.controlCenterPreferredHeight))
+        }
+        
         if coordinator.currentView == .notes {
             let preferredHeight = coordinator.notesLayoutState.preferredHeight
             let resolvedHeight = max(baseSize.height, preferredHeight)
@@ -221,6 +226,10 @@ struct ContentView: View {
            coordinator.currentView == .home,
            let preferredHeight = extensionMinimalisticPreferredHeight(baseSize: baseSize) {
             return CGSize(width: baseSize.width, height: preferredHeight)
+        }
+
+        if coordinator.currentView == .monitor {
+            return CGSize(width: baseSize.width, height: max(baseSize.height, monitorOpenNotchHeight))
         }
 
         guard coordinator.currentView == .stats else {
@@ -313,15 +322,19 @@ struct ContentView: View {
     // MARK: - Tab switch direction for smooth transitions
     
     private var tabSwitchTransition: AnyTransition {
+        // A pure horizontal push, like macOS Spaces: the incoming page slides
+        // in from the side the user is moving toward while the outgoing page
+        // leaves through the opposite side. No cross-fade, so the two pages
+        // never look like they are dissolving into each other.
         if coordinator.tabSwitchForward {
             return .asymmetric(
-                insertion: .move(edge: .trailing).combined(with: .opacity),
-                removal: .move(edge: .leading).combined(with: .opacity)
+                insertion: .move(edge: .trailing),
+                removal: .move(edge: .leading)
             )
         } else {
             return .asymmetric(
-                insertion: .move(edge: .leading).combined(with: .opacity),
-                removal: .move(edge: .trailing).combined(with: .opacity)
+                insertion: .move(edge: .leading),
+                removal: .move(edge: .trailing)
             )
         }
     }
@@ -350,10 +363,27 @@ struct ContentView: View {
         guard vm.notchState == .open else {
             return activeCornerRadiusInsets.closed.bottom
         }
+        // The Home page is a wide two-column surface; its side gutters read as
+        // dead space next to the continuous rounded edges. Pull just this tab
+        // closer to the left/right edges while keeping enough clearance for the
+        // corner curve. Other tabs keep the original inset.
+        if coordinator.currentView == .home {
+            let radius = Defaults[.cornerRadiusScaling]
+                ? activeCornerRadiusInsets.opened.top
+                : activeCornerRadiusInsets.opened.bottom
+            return max(5, radius - 23)
+        }
         if Defaults[.cornerRadiusScaling] {
             return activeCornerRadiusInsets.opened.top - 5
         }
         return activeCornerRadiusInsets.opened.bottom - 5
+    }
+
+    private var openContentHorizontalPadding: CGFloat {
+        guard vm.notchState == .open else { return 0 }
+        // Home is the two-column dashboard; giving it a narrower interior
+        // gutter lets the music and weather/calendar columns reach the sides.
+        return coordinator.currentView == .home ? 8 : 12
     }
 
     private var bodyHoverAreaPadding: CGFloat {
@@ -663,7 +693,8 @@ struct ContentView: View {
             // Applying the regular closed-notch inset here makes that surface
             // wider than both the root view and its NSWindow, clipping both sides.
             .padding(.horizontal, isConnectivityHUDVisible ? 0 : notchHorizontalPadding)
-            .padding([.horizontal, .bottom], vm.notchState == .open ? 12 : 0)
+            .padding(.horizontal, openContentHorizontalPadding)
+            .padding(.bottom, vm.notchState == .open ? 12 : 0)
             .background(.black)
             .clipShape(resolvedClipShape)
             // Keep the anti-gap fill outside the clipped notch. The window sits
@@ -765,6 +796,7 @@ struct ContentView: View {
                     }
                 }
             })
+            .onAppear { updateSystemMonitorSurface() }
             .onChange(of: vm.notchState) { _, newState in
                 // Update smart monitoring based on notch state
                 if enableStatsFeature {
@@ -774,6 +806,7 @@ struct ContentView: View {
                         currentView: currentViewString
                     )
                 }
+                updateSystemMonitorSurface()
 
                 // Reset hover state when notch state changes
                 if newState == .closed && isHovering {
@@ -837,7 +870,10 @@ struct ContentView: View {
                     }
                 }
             }
-            .onChange(of: coordinator.currentView) { _, newValue in
+            .onChange(of: coordinator.currentView) { oldValue, newValue in
+                if oldValue == .monitor || newValue == .monitor {
+                    vm.refreshOpenNotchSizeForCurrentTab()
+                }
                 if enableStatsFeature {
                     let currentViewString = newValue == .stats ? "stats" : "other"
                     statsManager.updateMonitoringState(
@@ -845,6 +881,7 @@ struct ContentView: View {
                         currentView: currentViewString
                     )
                 }
+                updateSystemMonitorSurface()
                 syncStickyTerminalOutsideClickMonitor()
                 // The outgoing home view may be torn down while the pointer
                 // still sits on the music block; drop the stale flag so
@@ -1324,8 +1361,13 @@ struct ContentView: View {
                                   NotchTimerView()
                               case .stats:
                                   NotchStatsView()
+                              case .monitor:
+                                  NotchSystemMonitorView()
+                                      .frame(height: max(300, monitorOpenNotchHeight - 20))
                               case .llmUsage:
                                   NotchLLMUsageView()
+                              case .controlCenter:
+                                  NotchControlCenterView()
                               case .colorPicker:
                                   NotchColorPickerView()
                             case .notes:
@@ -1346,11 +1388,12 @@ struct ContentView: View {
                       .transition(tabSwitchTransition)
                   }
               }
+              .clipped()
               .zIndex(1)
               .allowsHitTesting(vm.notchState == .open)
               .blur(radius: abs(gestureProgress) > 0.3 ? min(abs(gestureProgress), 8) : 0)
               .opacity(abs(gestureProgress) > 0.3 ? min(abs(gestureProgress * 2), 0.8) : 1)
-              .animation(.smooth(duration: 0.3), value: coordinator.currentView)
+              .animation(.easeInOut(duration: 0.32), value: coordinator.currentView)
           }
       }
 
@@ -2273,6 +2316,14 @@ struct ContentView: View {
         hiddenEdgeHoverPollingTask = nil
     }
 
+    /// The notch Monitor tab and the dashboard share one SystemMonitorService;
+    /// this only registers/unregisters the notch surface. Opening the dashboard
+    /// does not stop notch sampling if the tab stays visible.
+    private func updateSystemMonitorSurface() {
+        let visible = vm.notchState == .open && coordinator.currentView == .monitor
+        SystemMonitorService.shared.setSurface(.notch, visible: visible)
+    }
+
     private func startHoverClickMonitor() {
         guard Defaults[.openNotchOnHover] else { return }
         guard !isConnectivityHUDVisible else { return }
@@ -2541,7 +2592,7 @@ struct ContentView: View {
         // Without this, the hover-exit timer closes the panel mid-drag, tearing
         // down the NSView that is acting as the drag source and cancelling the
         // session — an independent second cause of "drag-out doesn't work".
-        coordinator.firstLaunch || hasAnyActivePopovers() || vm.isAutoCloseSuppressed || ShelfSelectionModel.shared.isDragging || ClipboardManager.shared.isDraggingItem || TabBarInteractionState.shared.isReordering || SharingStateManager.shared.preventNotchClose || (Defaults[.terminalStickyMode] && coordinator.currentView == .terminal)
+        coordinator.firstLaunch || hasAnyActivePopovers() || vm.isAutoCloseSuppressed || ShelfSelectionModel.shared.isDragging || ClipboardManager.shared.isDraggingItem || TabBarInteractionState.shared.isReordering || ControlCenterState.shared.isInteracting || SharingStateManager.shared.preventNotchClose || (Defaults[.terminalStickyMode] && coordinator.currentView == .terminal)
     }
     
     // Helper to prevent rapid haptic feedback

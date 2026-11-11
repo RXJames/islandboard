@@ -1,5 +1,5 @@
 /*
- * Atoll (DynamicIsland)
+ * IslandBoard (DynamicIsland)
  * Copyright (C) 2024-2026 Atoll Contributors
  *
  * This program is free software: you can redistribute it and/or modify
@@ -18,7 +18,7 @@
 
 import XCTest
 
-@testable import Atoll
+@testable import IslandBoard
 
 /// The media key tap cannot be created until Accessibility is granted, and
 /// granting it does not relaunch the app — so the retry schedule is the only

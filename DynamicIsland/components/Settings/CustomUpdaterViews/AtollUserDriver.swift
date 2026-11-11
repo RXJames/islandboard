@@ -1,5 +1,5 @@
 /*
- * Atoll (DynamicIsland)
+ * IslandBoard (DynamicIsland)
  * Copyright (C) 2024-2026 Atoll Contributors
  *
  * This program is free software: you can redistribute it and/or modify
@@ -145,7 +145,7 @@ class AtollUserDriver: NSObject, @preconcurrency SPUUserDriver {
         self.hostingController = hostingController
         
         let window = NSWindow(contentViewController: hostingController)
-        window.title = "Atoll Update"
+        window.title = "IslandBoard Update"
         window.styleMask = [.titled, .fullSizeContentView]
         window.isReleasedWhenClosed = false
         window.titlebarAppearsTransparent = true
@@ -245,7 +245,7 @@ struct UpdateCheckingView: View {
                 .font(.headline)
                 .foregroundStyle(.primary)
             
-            Text("Looking for a new version of Atoll")
+            Text("Looking for a new version of IslandBoard")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
             

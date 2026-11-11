@@ -1,5 +1,5 @@
 /*
- * Atoll (DynamicIsland)
+ * IslandBoard (DynamicIsland)
  * Copyright (C) 2024-2026 Atoll Contributors
  *
  * This program is free software: you can redistribute it and/or modify
@@ -20,7 +20,7 @@ import Foundation
 import Network
 import Defaults
 
-/// WebSocket server for Atoll RPC.
+/// WebSocket server for IslandBoard RPC.
 /// Uses Apple's Network.framework (`NWListener`) — no external dependencies.
 /// Listens on localhost:9020 for JSON-RPC 2.0 requests over WebSocket.
 ///
@@ -251,7 +251,7 @@ final class ExtensionRPCServer {
     private func handleListenerState(_ state: NWListener.State, host: NWEndpoint.Host) {
         switch state {
         case .ready:
-            Logger.log("Started Atoll RPC WebSocket server on \(host):\(port)", category: .extensions)
+            Logger.log("Started IslandBoard RPC WebSocket server on \(host):\(port)", category: .extensions)
         case .failed(let error):
             Logger.log(
                 "RPC server on \(host) failed: \(error.localizedDescription)",

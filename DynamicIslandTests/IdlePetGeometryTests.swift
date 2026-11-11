@@ -8,7 +8,7 @@
 
 import XCTest
 import CoreGraphics
-@testable import Atoll
+@testable import IslandBoard
 
 final class IdlePetGeometryTests: XCTestCase {
 

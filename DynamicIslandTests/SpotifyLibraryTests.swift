@@ -1,5 +1,5 @@
 /*
- * Atoll (DynamicIsland)
+ * IslandBoard (DynamicIsland)
  * Copyright (C) 2024-2026 Atoll Contributors
  *
  * This program is free software: you can redistribute it and/or modify
@@ -19,7 +19,7 @@
 import Defaults
 import Security
 import XCTest
-@testable import Atoll
+@testable import IslandBoard
 
 /// Exercises the seams the Spotify refactor introduced: the token store,
 /// the HTTP client, and the auth session are all injectable, so the OAuth

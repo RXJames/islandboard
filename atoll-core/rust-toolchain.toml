@@ -1,0 +1,7 @@
+[toolchain]
+# The Rust core must build with the same channel on every machine and on CI.
+# Dependencies are pinned separately by Cargo.lock (cargo build --locked);
+# the channel stays on stable so contributors do not need a second toolchain
+# installed just for atoll-core.
+channel = "stable"
+profile = "minimal"

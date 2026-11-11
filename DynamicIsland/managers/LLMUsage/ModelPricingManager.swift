@@ -1,5 +1,5 @@
 /*
- * Atoll (DynamicIsland)
+ * IslandBoard (DynamicIsland)
  * Copyright (C) 2024-2026 Atoll Contributors
  *
  * This program is free software: you can redistribute it and/or modify
@@ -95,7 +95,7 @@ class ModelPricingManager: ObservableObject {
     
     // Read the copy the update-pricing workflow maintains: it runs on, and pushes back
     // to, the repository's default branch.
-    private let remoteURL = URL(string: "https://raw.githubusercontent.com/Ebullioscopic/Atoll/dev/DynamicIsland/managers/LLMUsage/pricing.json")!
+    private let remoteURL = URL(string: "https://raw.githubusercontent.com/RXJames/islandboard/dev/DynamicIsland/managers/LLMUsage/pricing.json")!
     
     private init() {
         loadInitialPricing()

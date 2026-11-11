@@ -1,5 +1,5 @@
 /*
- * Atoll (DynamicIsland)
+ * IslandBoard (DynamicIsland)
  * Copyright (C) 2024-2026 Atoll Contributors
  *
  * This program is free software: you can redistribute it and/or modify
@@ -19,7 +19,7 @@
 import Network
 import XCTest
 
-@testable import Atoll
+@testable import IslandBoard
 
 /// The peer check that keeps the extension RPC server local.
 ///
@@ -93,7 +93,7 @@ final class ExtensionRPCServerTests: XCTestCase {
     /// something this server should be answering.
     func testAServiceEndpointIsRefused() {
         let service = NWEndpoint.service(
-            name: "Atoll", type: "_atoll._tcp", domain: "local", interface: nil
+            name: "IslandBoard", type: "_atoll._tcp", domain: "local", interface: nil
         )
         XCTAssertFalse(ExtensionRPCServer.isLoopback(service))
     }

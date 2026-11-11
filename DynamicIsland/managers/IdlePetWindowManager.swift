@@ -1,5 +1,5 @@
 /*
- * Atoll (DynamicIsland)
+ * IslandBoard (DynamicIsland)
  * Copyright (C) 2024-2026 Atoll Contributors
  *
  * This program is free software: you can redistribute it and/or modify
@@ -71,21 +71,113 @@ enum IdlePetGeometry {
 
 // MARK: - Pet window content
 
+/// Observable walking state, so direction/state changes re-render the hosted
+/// pet in place instead of rebuilding the whole hosting view (destroying a
+/// live Lottie view was the SIGSEGV source this manager is built around).
+@MainActor
+final class IdlePetVisualState: ObservableObject {
+    /// 1 walks right, -1 walks left. Only used to mirror pets that do not
+    /// ship direction-specific run rows (Lottie pets, legacy 8-row sheets).
+    @Published var facing: CGFloat = 1
+    /// Atlas row: idle / running-left / running-right / jumping.
+    @Published var spriteState: String = "idle"
+}
+
 private struct IdlePetWindowContent: View {
     var size: CGFloat = 32
-    /// 1 walks right, -1 walks left (the Lottie is mirrored; the animation
-    /// loops identically both ways).
-    var facing: CGFloat = 1
+    @ObservedObject var visual: IdlePetVisualState
+    @Default(.selectedIdleAnimation) private var selectedAnimation
+
+    /// Codex atlases with both `running-left` and `running-right` already
+    /// face the right way; everything else is mirrored by scaling.
+    private var mirror: CGFloat {
+        guard let animation = selectedAnimation,
+              case .codexPet(let directory) = animation.source,
+              let pet = CodexPetStore.shared.pet(at: directory)
+        else { return visual.facing }
+        let directional = pet.rowNames.contains("running-left")
+            && pet.rowNames.contains("running-right")
+        return directional ? 1 : visual.facing
+    }
 
     var body: some View {
-        IdleAnimationView(fittingSize: CGSize(width: size, height: size))
+        IdleAnimationView(fittingSize: CGSize(width: size, height: size),
+                          spriteState: visual.spriteState)
             .frame(width: size, height: size)
-            .scaleEffect(x: facing, y: 1)
+            .scaleEffect(x: mirror, y: 1)
             // A fully transparent borderless window swallows mouse-downs,
             // so give the pet a nearly invisible but hittable plate that
-            // keeps `isMovableByWindowBackground` drags alive.
+            // keeps window-background drags alive.
             .background(Color.white.opacity(0.001))
     }
+}
+
+extension Notification.Name {
+    /// Brackets one user drag of the walking pet, from mouse-down to
+    /// mouse-up. The manager holds its "dragging" state for exactly this
+    /// span instead of guessing from `windowDidMove` timing, which used to
+    /// flip the pet between the jumping and running rows mid-drag (it read
+    /// as the pet blinking).
+    static let idlePetDragBegan = Notification.Name("AtollIdlePetDragBegan")
+    static let idlePetDragEnded = Notification.Name("AtollIdlePetDragEnded")
+}
+
+/// Borderless pet windows are not key by default; `performDrag(with:)` and
+/// first-click delivery are unreliable unless the window can become key.
+private final class IdlePetWindow: NSWindow {
+    override var canBecomeKey: Bool { true }
+    override var canBecomeMain: Bool { false }
+}
+
+/// The transparent AppKit view that sits above the hosted SwiftUI pet and owns
+/// mouse-down. Putting this directly into the window's content container is
+/// more reliable than a SwiftUI `.overlay`, especially while the sprite/lottie
+/// timeline is re-rendering and SwiftUI hit-testing changes.
+private final class IdlePetDragView: NSView {
+    override var mouseDownCanMoveWindow: Bool { false }
+
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    override func mouseDown(with event: NSEvent) {
+        // A parked pet is not necessarily the key window (and the app can be
+        // inactive when the user grabs it again). Make it key first so
+        // NSWindow.performDrag reliably starts instead of silently ignoring
+        // the mouseDown.
+        NSApp.activate(ignoringOtherApps: true)
+        window?.makeKeyAndOrderFront(nil)
+        NotificationCenter.default.post(name: .idlePetDragBegan, object: nil)
+        window?.performDrag(with: event)
+        NotificationCenter.default.post(name: .idlePetDragEnded, object: nil)
+    }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        isHidden ? nil : self
+    }
+}
+
+/// Hosting view plus an AppKit drag layer on top.
+private final class IdlePetContentContainer: NSView {
+    let dragView = IdlePetDragView()
+
+    init(hosting: NSView) {
+        super.init(frame: .zero)
+        hosting.autoresizingMask = [.width, .height]
+        hosting.frame = bounds
+        addSubview(hosting)
+        dragView.autoresizingMask = [.width, .height]
+        dragView.frame = bounds
+        addSubview(dragView)
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    // The drag view's acceptsFirstMouse is not enough: AppKit asks the
+    // window's content view before delivering the first click to an inactive
+    // app. Without this, the first attempt only activated IslandBoard, and the pet
+    // did not move until a second click.
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 }
 
 // MARK: - Manager
@@ -135,12 +227,19 @@ final class IdlePetWindowManager: NSObject, ObservableObject, NSWindowDelegate {
     private var running = false
     private var screenLocked = false
     private var lockObservers: [NSObjectProtocol] = []
+    private var dragObservers: [NSObjectProtocol] = []
     private var dir: CGFloat = 1
+    /// Shared with the hosted view; updated instead of rebuilding rootView.
+    private let visual = IdlePetVisualState()
     private var x: CGFloat = 0
     private var standing = false
     private var actionEnd = Date.distantPast
     private var dragging = false
     private var programmaticMove = false
+    /// A pet dropped away from the notch stays exactly where it was released
+    /// instead of being clamped back to the patrol lane and snapping to the
+    /// menu bar in the next tick.
+    private var parkedAfterDrag = false
     private var mode: Mode = .patrolling
     /// True while the pet belongs on the notch face (intro loops, resting
     /// after an absorb, or walking disabled); walking hides the face pet.
@@ -184,7 +283,9 @@ final class IdlePetWindowManager: NSObject, ObservableObject, NSWindowDelegate {
         settleWork?.cancel()
         settleWork = nil
         dragging = false
+        parkedAfterDrag = false
         mode = .patrolling
+        if visual.spriteState != "idle" { visual.spriteState = "idle" }
         if petShownInNotchFace { petShownInNotchFace = false }
         guard let window else { return }
         DispatchQueue.main.async {
@@ -205,6 +306,15 @@ final class IdlePetWindowManager: NSObject, ObservableObject, NSWindowDelegate {
         }
         // The pet rides in the notch's max-level SkyLight space, so it must
         // not linger over the login window while the screen is locked.
+        if dragObservers.isEmpty {
+            let center = NotificationCenter.default
+            dragObservers.append(center.addObserver(forName: .idlePetDragBegan, object: nil, queue: .main) { [weak self] _ in
+                Task { @MainActor in self?.userDragBegan() }
+            })
+            dragObservers.append(center.addObserver(forName: .idlePetDragEnded, object: nil, queue: .main) { [weak self] _ in
+                Task { @MainActor in self?.userDragEnded() }
+            })
+        }
         if lockObservers.isEmpty {
             let center = DistributedNotificationCenter.default()
             lockObservers.append(center.addObserver(forName: .init("com.apple.screenIsLocked"), object: nil, queue: .main) { [weak self] _ in
@@ -221,11 +331,12 @@ final class IdlePetWindowManager: NSObject, ObservableObject, NSWindowDelegate {
     private func buildIfNeeded() {
         guard window == nil else { return }
         let size = petSize
-        let hosting = NSHostingView(rootView: IdlePetWindowContent(size: size))
-        let panel = NSWindow(contentRect: NSRect(x: 0, y: 0, width: size, height: size),
-                             styleMask: [.borderless],
-                             backing: .buffered,
-                             defer: false)
+        let hosting = NSHostingView(rootView: IdlePetWindowContent(size: size, visual: visual))
+        let container = IdlePetContentContainer(hosting: hosting)
+        let panel = IdlePetWindow(contentRect: NSRect(x: 0, y: 0, width: size, height: size),
+                                  styleMask: [.borderless],
+                                  backing: .buffered,
+                                  defer: false)
         panel.isOpaque = false
         panel.backgroundColor = .clear
         panel.hasShadow = false
@@ -238,8 +349,10 @@ final class IdlePetWindowManager: NSObject, ObservableObject, NSWindowDelegate {
         }
         panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle, .fullScreenAuxiliary]
         panel.isMovableByWindowBackground = true
+        panel.ignoresMouseEvents = false
+        panel.acceptsMouseMovedEvents = true
         panel.delegate = self
-        panel.contentView = hosting
+        panel.contentView = container
         window = panel
         host = hosting
         // The notch window is lifted into SkyLight's max-level space, which
@@ -282,7 +395,7 @@ final class IdlePetWindowManager: NSObject, ObservableObject, NSWindowDelegate {
     private func relayoutSize() {
         guard let window, let host else { return }
         let size = petSize
-        host.rootView = IdlePetWindowContent(size: size, facing: dir >= 0 ? 1 : -1)
+        host.rootView = IdlePetWindowContent(size: size, visual: visual)
         var frame = window.frame
         frame.size = CGSize(width: size, height: size)
         programmaticMove = true
@@ -311,6 +424,7 @@ final class IdlePetWindowManager: NSObject, ObservableObject, NSWindowDelegate {
     // MARK: Intro: 3 idle loops inside the notch, then walk out
 
     private func beginIntro() {
+        parkedAfterDrag = false
         introWork?.cancel()
         reappearWork?.cancel()
         if !petShownInNotchFace { petShownInNotchFace = true }
@@ -327,6 +441,7 @@ final class IdlePetWindowManager: NSObject, ObservableObject, NSWindowDelegate {
 
     private func beginWalk() {
         introWork = nil
+        parkedAfterDrag = false
         guard running, mode == .patrolling, let segment = currentSegment(), let notch = inputs.notchRect else { return }
         if screenLocked || inputs.notchOpen {
             // Intro finished while the screen is locked or the notch is
@@ -365,6 +480,9 @@ final class IdlePetWindowManager: NSObject, ObservableObject, NSWindowDelegate {
                                                 speed: anim.speed)
         case .lottieURL:
             return 3
+        case .codexPet(let directory):
+            guard let pet = CodexPet.load(directory: directory) else { return 1.1 }
+            return pet.frameInterval * Double(pet.framesPerState)
         }
     }
 
@@ -381,6 +499,11 @@ final class IdlePetWindowManager: NSObject, ObservableObject, NSWindowDelegate {
             if window?.isVisible == true { window?.orderOut(nil) }
             return
         }
+        if parkedAfterDrag {
+            if window?.isVisible == false { window?.orderFrontRegardless() }
+            joinNotchSpace()
+            return
+        }
         if window?.isVisible == false { window?.orderFrontRegardless() }
         joinNotchSpace()  // cheap: only acts if a layout refresh dropped us
         guard let segment = currentSegment() else { return }
@@ -390,6 +513,7 @@ final class IdlePetWindowManager: NSObject, ObservableObject, NSWindowDelegate {
             actionEnd = now.addingTimeInterval(standing
                 ? Double.random(in: Self.stopRange)
                 : Double.random(in: Self.strollRange))
+            updateSpriteState()
         }
         guard !standing else { return }
         let step = Self.walkSpeed * CGFloat(Self.tickInterval) * dir
@@ -413,41 +537,77 @@ final class IdlePetWindowManager: NSObject, ObservableObject, NSWindowDelegate {
     }
 
     private func setFacing() {
-        host?.rootView = IdlePetWindowContent(size: petSize, facing: dir >= 0 ? 1 : -1)
+        visual.facing = dir >= 0 ? 1 : -1
+        updateSpriteState()
+    }
+
+    /// Picks the Codex atlas row for what the pet is doing right now; Lottie
+    /// pets ignore it. Only publishes on change, since the walk loop runs at
+    /// 30 Hz.
+    private func updateSpriteState() {
+        let next: String
+        if dragging {
+            next = "jumping"
+        } else if running, mode == .patrolling, introWork == nil, !standing {
+            next = dir >= 0 ? "running-right" : "running-left"
+        } else {
+            next = "idle"
+        }
+        if visual.spriteState != next { visual.spriteState = next }
     }
 
     // MARK: Drag handling
 
-    /// Fires for both programmatic and user moves; `programmaticMove`
-    /// distinguishes them. A user drag that lands on the notch absorbs the
-    /// pet back into the face; anywhere else it keeps patrolling from there.
+    /// Programmatic moves (walking steps) are ignored; a user drag is
+    /// bracketed by the drag surface's begin/end notifications, so there is
+    /// nothing to decide per move.
     func windowDidMove(_ notification: Notification) {
         guard !programmaticMove else { return }
-        dragging = true
+    }
+
+    // MARK: User drag (from the pet window's drag surface)
+
+    private func userDragBegan() {
+        settleWork?.cancel()
+        settleWork = nil
         reappearWork?.cancel()
         reappearWork = nil
         introWork?.cancel()
         introWork = nil
+        parkedAfterDrag = false
+        dragging = true
+        updateSpriteState()
+    }
 
-        if let window, let notch = inputs.notchRect,
-           window.frame.intersects(notch.insetBy(dx: -4, dy: -4)) {
-            absorbIntoNotch()
-            return
+    private func userDragEnded() {
+        guard dragging else { return }
+        dragging = false
+        if let window, let notch = inputs.notchRect {
+            // Absorb only when the pet's centre is actually over the notch.
+            // The old frame-intersection test fired for a pet still beside
+            // the notch (the notch is much wider than the pet), so a short
+            // horizontal drag read as "it jumped back".
+            let center = CGPoint(x: window.frame.midX, y: window.frame.midY)
+            if notch.insetBy(dx: -4, dy: -4).contains(center) {
+                absorbIntoNotch()
+                return
+            }
         }
-        settleWork?.cancel()
-        let work = DispatchWorkItem { [weak self] in
-            guard let self, self.dragging else { return }
-            self.dragging = false
-            self.x = self.window?.frame.minX ?? self.x
-            self.clampIntoSegment()
-        }
-        settleWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35, execute: work)
+        parkedAfterDrag = true
+        standing = true
+        actionEnd = .distantFuture
+        x = window?.frame.minX ?? x
+        updateSpriteState()
+        // Deliberately do not call placeWindow(): preserve both the dropped
+        // x and y. The next tick keeps the window there until the user starts
+        // another drag or hides the pet.
     }
 
     private func absorbIntoNotch() {
         mode = .absorbed
         dragging = false
+        parkedAfterDrag = false
+        if visual.spriteState != "idle" { visual.spriteState = "idle" }
         settleWork?.cancel()
         settleWork = nil
         if let window {

@@ -1,12 +1,12 @@
 /*
- * Atoll (DynamicIsland)
+ * IslandBoard (DynamicIsland)
  * Copyright (C) 2024-2026 Atoll Contributors
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
 import XCTest
-@testable import Atoll
+@testable import IslandBoard
 
 final class LiquidGlassVariantTests: XCTestCase {
 

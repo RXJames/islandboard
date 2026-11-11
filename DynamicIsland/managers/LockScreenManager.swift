@@ -1,5 +1,5 @@
 /*
- * Atoll (DynamicIsland)
+ * IslandBoard (DynamicIsland)
  * Copyright (C) 2024-2026 Atoll Contributors
  *
  * This program is free software: you can redistribute it and/or modify
@@ -166,7 +166,7 @@ class LockScreenManager: ObservableObject {
 
         // Power/Touch ID presses arrive as system-defined power-key events on
         // Macs that expose them outside Secure Input. Listen locally and
-        // globally: global monitors do not receive events delivered to Atoll,
+        // globally: global monitors do not receive events delivered to IslandBoard,
         // while local monitors only receive those events.
         if let localMonitor = NSEvent.addLocalMonitorForEvents(matching: .systemDefined) { [weak self] event in
             if event.subtype == .powerKey {
@@ -264,7 +264,7 @@ class LockScreenManager: ObservableObject {
         LockScreenWeatherManager.shared.showWeatherWidget()
         LockScreenTimerWidgetManager.shared.handleLockStateChange(isLocked: true)
         
-        // THEN trigger lock icon in Atoll (only if enabled in settings)
+        // THEN trigger lock icon in IslandBoard (only if enabled in settings)
         if Defaults[.enableLockScreenLiveActivity] {
             print("[\(timestamp())] LockScreenManager: 🔴 Starting lock icon live activity")
             coordinator.toggleExpandingView(status: true, type: .lockScreen)

@@ -1,9 +1,9 @@
 /*
- * Atoll (DynamicIsland)
+ * IslandBoard (DynamicIsland)
  * Copyright (C) 2024-2026 Atoll Contributors
  *
  * Originally from boring.notch project
- * Modified and adapted for Atoll (DynamicIsland)
+ * Modified and adapted for IslandBoard (DynamicIsland)
  * See NOTICE for details.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -102,7 +102,7 @@ func enabledStandardTabCount() -> Int {
     var count = 0
 
     // Home tab
-    if Defaults[.showStandardMediaControls] || Defaults[.showCalendar] || Defaults[.showMirror] {
+    if Defaults[.showStandardMediaControls] || Defaults[.showCalendar] || Defaults[.showMirror] || Defaults[.enableHomeWeather] {
         count += 1
     }
 
@@ -118,6 +118,16 @@ func enabledStandardTabCount() -> Int {
 
     // Stats tab
     if Defaults[.enableStatsFeature] {
+        count += 1
+    }
+
+    // System Monitor tab
+    if Defaults[.enableSystemMonitorTab] {
+        count += 1
+    }
+
+    // Control Center tab
+    if Defaults[.enableControlCenterTab] {
         count += 1
     }
 
@@ -168,6 +178,11 @@ let minimalisticTimerCountdownContentHeight: CGFloat = 82
 let minimalisticTimerCountdownBlockHeight: CGFloat = minimalisticTimerCountdownTopPadding + minimalisticTimerCountdownContentHeight
 let statsSecondRowContentHeight: CGFloat = 120
 let statsGridSpacingHeight: CGFloat = 12
+
+/// Two rows of the System Monitor's larger metric cards, plus the header.
+/// Slightly taller than the Stats two-row layout because each monitor card is
+/// taller than a stats graph row.
+let monitorOpenNotchHeight: CGFloat = 380
 let notchShadowPaddingStandard: CGFloat = 18
 let notchShadowPaddingMinimalistic: CGFloat = 12
 
@@ -196,7 +211,7 @@ func minimalisticOpenNotchSize(isDynamicIslandMode: Bool) -> CGSize {
 
     return size
 }
-let cornerRadiusInsets: (opened: (top: CGFloat, bottom: CGFloat), closed: (top: CGFloat, bottom: CGFloat)) = (opened: (top: 19, bottom: 24), closed: (top: 6, bottom: 14))
+let cornerRadiusInsets: (opened: (top: CGFloat, bottom: CGFloat), closed: (top: CGFloat, bottom: CGFloat)) = (opened: (top: 28, bottom: 32), closed: (top: 6, bottom: 14))
 let minimalisticCornerRadiusInsets: (opened: (top: CGFloat, bottom: CGFloat), closed: (top: CGFloat, bottom: CGFloat)) = (opened: (top: 35, bottom: 35), closed: cornerRadiusInsets.closed)
 
 // MARK: - Terminal tab clip (notch surface)

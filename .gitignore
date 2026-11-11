@@ -142,6 +142,9 @@ PrivateWorks
 !tests/test_privacy_configuration.py
 !tests/test_timer_lifecycle.py
 *.sh
+# The Rust core's build script is invoked by the Xcode build phase and must be
+# committed for clean checkouts (the *.sh rule above is for local helpers).
+!atoll-core/build.sh
 comparison_report.json
 *.txt
 ANIMATION_DEBUG_GUIDE.md

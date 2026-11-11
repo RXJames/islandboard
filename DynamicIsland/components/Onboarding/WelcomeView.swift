@@ -1,9 +1,9 @@
 /*
- * Atoll (DynamicIsland)
+ * IslandBoard (DynamicIsland)
  * Copyright (C) 2024-2026 Atoll Contributors
  *
  * Originally from boring.notch project
- * Modified and adapted for Atoll (DynamicIsland)
+ * Modified and adapted for IslandBoard (DynamicIsland)
  * See NOTICE for details.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -41,7 +41,7 @@ struct WelcomeView: View {
                         .aspectRatio(contentMode: .fit)
                         .frame(width: 100, height: 100)
                         .padding(.bottom, 8)
-                    Text("Atoll")
+                    Text("IslandBoard")
                         .font(.system(.largeTitle, design: .default))
                         .fontWeight(.semibold)
                     Text("Welcome")

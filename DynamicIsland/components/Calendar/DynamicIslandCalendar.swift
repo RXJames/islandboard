@@ -1,5 +1,5 @@
 /*
- * Atoll (DynamicIsland)
+ * IslandBoard (DynamicIsland)
  * Copyright (C) 2024-2026 Atoll Contributors
  *
  * This program is free software: you can redistribute it and/or modify
@@ -375,6 +375,44 @@ struct CalendarView: View {
     @Default(.hideAllDayEvents) private var hideAllDayEvents
     @Default(.hideCompletedReminders) private var hideCompletedReminders
 
+    /// When weather occupies the bottom of the Home right column, the
+    /// collapsed calendar no longer needs to reserve the full 120pt. It grows
+    /// back to 120pt on hover, so the existing date-expansion behaviour and the
+    /// scrolling event list still work; the weather card gives up the height.
+    private let compactWhenCollapsed: Bool
+
+    init(compactWhenCollapsed: Bool = false) {
+        self.compactWhenCollapsed = compactWhenCollapsed
+    }
+
+    private var compactFilteredEvents: [EventModel] {
+        EventListView.filteredEvents(
+            events: calendarManager.events,
+            hideCompletedReminders: hideCompletedReminders,
+            hideAllDayEvents: hideAllDayEvents
+        )
+    }
+
+    /// Collapsed height that is just enough for the date header, the all-day
+    /// strip and one timed row. This removes the dead space that used to sit
+    /// between the calendar and the weather card; hover still expands to 120.
+    private var compactCollapsedHeight: CGFloat {
+        let parts = partitionEvents(compactFilteredEvents)
+        if parts.allDay.isEmpty && parts.timed.isEmpty {
+            // The empty state has an icon, title and subtitle; reserving less
+            // than this makes that copy overlap the weather card below.
+            return 78
+        }
+        var height: CGFloat = 22
+        if !parts.allDay.isEmpty {
+            height += AllDayStripMetrics.chipRowHeight + (AllDayStripMetrics.verticalPadding * 2) + 2
+        }
+        if !parts.timed.isEmpty {
+            height += 34
+        }
+        return min(120, max(54, height))
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             // Compact-by-default date header: when collapsed it shows a single
@@ -473,7 +511,7 @@ struct CalendarView: View {
         // wins (all-day floating strip + single-line title) remain, so more timed
         // events are visible at 120 than before, but we no longer enlarge the
         // window or touch the music player's layout.
-        .frame(height: 120)
+        .frame(height: compactWhenCollapsed ? (dateExpanded ? 120 : compactCollapsedHeight) : 120)
         .onChange(of: selectedDate) {
             Task {
                 await calendarManager.updateCurrentDate(selectedDate)

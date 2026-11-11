@@ -1,5 +1,5 @@
 /*
- * Atoll (DynamicIsland)
+ * IslandBoard (DynamicIsland)
  * Copyright (C) 2024-2026 Atoll Contributors
  *
  * This program is free software: you can redistribute it and/or modify
@@ -9,7 +9,7 @@
  */
 
 import XCTest
-@testable import Atoll
+@testable import IslandBoard
 
 /// The adapter's diff updates omit what has not changed, so "absent" and
 /// "present but null" mean different things for the playback position. Optional

@@ -1,9 +1,9 @@
 /*
- * Atoll (DynamicIsland)
+ * IslandBoard (DynamicIsland)
  * Copyright (C) 2024-2026 Atoll Contributors
  *
  * Originally from boring.notch project
- * Modified and adapted for Atoll (DynamicIsland)
+ * Modified and adapted for IslandBoard (DynamicIsland)
  * See NOTICE for details.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -229,6 +229,7 @@ struct MusicPlayerView: View {
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             AlbumArtView(vm: vm, albumArtNamespace: albumArtNamespace)
+                .frame(width: 150, height: 150)
             MusicControlsView()
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -897,6 +898,7 @@ struct NotchHomeView: View {
     @Default(.showStandardMediaControls) private var showStandardMediaControls
     @Default(.autoHideInactiveNotchMediaPlayer) private var autoHideInactiveNotchMediaPlayer
     @Default(.showCalendar) private var showCalendar
+    @Default(.enableHomeWeather) private var enableHomeWeather
     @Default(.enableLyrics) private var enableLyrics
     @Default(.lyricsPanelWidth) private var lyricsPanelWidth
     @Default(.lyricsPanelOffset) private var lyricsPanelOffset
@@ -909,6 +911,20 @@ struct NotchHomeView: View {
         showStandardMediaControls && (!autoHideInactiveNotchMediaPlayer || musicManager.hasActiveSession)
     }
 
+    /// Weather is independent from the calendar. When the calendar is on, the
+    /// strip sits below it; when the calendar is off, the strip is still shown
+    /// in the right column.
+    private var shouldShowHomeWeather: Bool {
+        enableHomeWeather
+    }
+
+    private var homeWeatherColumnHeight: CGFloat {
+        // Leave the same bottom clearance as the other tabs; with the full
+        // openNotchSize height the Home clip can reach past the window's
+        // rounded bottom edge and truncate the corner.
+        max(120, openNotchSize.height - 28)
+    }
+
     private var shouldShowSideLyrics: Bool {
         shouldShowMusicPlayer && enableLyrics && !showCalendar
     }
@@ -918,6 +934,7 @@ struct NotchHomeView: View {
             if !coordinator.firstLaunch {
                 mainContent
                     .onAppear {
+                        vm.refreshOpenNotchSizeForCurrentTab()
                         syncCalendarDeferred()
                     }
                     .onChange(of: showCalendar) { _, newValue in
@@ -957,7 +974,7 @@ struct NotchHomeView: View {
             } else if shouldShowSideLyrics {
                 sideLyricsContent
             } else {
-                HStack(alignment: .top, spacing: SideLyricsLayout.hStackSpacing) {
+                HStack(alignment: .top, spacing: SideLyricsLayout.hStackSpacing + 8) {
                     // Normal mode: Show full music player with optional calendar and webcam
                     if shouldShowMusicPlayer {
                         MusicPlayerView(albumArtNamespace: albumArtNamespace)
@@ -965,15 +982,32 @@ struct NotchHomeView: View {
                             .onHover { vm.isHoveringMusicBlock = $0 }
                     }
 
-                    if showCalendar && showCalendarDeferred {
-                        Group {
-                            if shouldShowMusicPlayer {
-                                CalendarView()
-                            } else {
-                                StandaloneCalendarView()
+                    if showCalendar || shouldShowHomeWeather {
+                        VStack(spacing: 4) {
+                            if showCalendar && showCalendarDeferred {
+                                Group {
+                                    // With weather enabled we intentionally use
+                                    // the compact calendar even when music is off,
+                                    // so calendar + weather still fit the fixed
+                                    // 200pt Home height. Standalone is the
+                                    // full-height layout for calendar-only.
+                                    if shouldShowMusicPlayer || shouldShowHomeWeather {
+                                        CalendarView(compactWhenCollapsed: shouldShowHomeWeather)
+                                    } else {
+                                        StandaloneCalendarView()
+                                    }
+                                }
+                            }
+
+                            // Weather is its own feature: it can be enabled
+                            // without the calendar. Keeping it in the right
+                            // column leaves the music player untouched.
+                            if shouldShowHomeWeather {
+                                NotchHomeWeatherStrip()
                             }
                         }
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .frame(maxWidth: .infinity, alignment: .top)
+                        .frame(height: homeWeatherColumnHeight, alignment: .top)
                         .onHover { isHovering in
                             vm.isHoveringCalendar = isHovering
                         }
@@ -984,12 +1018,14 @@ struct NotchHomeView: View {
                         cameraPreview
                     }
                 }
+                .frame(maxWidth: .infinity, alignment: .top)
             }
         }
         .transition(.opacity.animation(.smooth.speed(0.9))
             .combined(with: .move(edge: .top)))
         .blur(radius: vm.notchState == .closed ? 30 : 0)
-        .padding(Defaults[.enableMinimalisticUI] ? 0 : 8) //Putting the main padding for home view here for consistency
+        .padding(.horizontal, Defaults[.enableMinimalisticUI] ? 0 : 2)
+        .padding(.vertical, Defaults[.enableMinimalisticUI] ? 0 : 8)
     }
 
     private var sideLyricsContent: some View {

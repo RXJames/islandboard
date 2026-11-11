@@ -27,7 +27,7 @@ concurrency:
 env:
   PROJECT: DynamicIsland.xcodeproj
   SCHEME: DynamicIsland
-  APP_NAME: Atoll
+  APP_NAME: IslandBoard
   TEAM_ID: 9Y64TRM77N
 
 jobs:
@@ -400,8 +400,8 @@ jobs:
           # --no-code-sign is used so the subsequent dedicated Sign DMG step handles it
           npx create-dmg "$APP_PATH" build/ --overwrite --no-code-sign
 
-          # sindresorhus/create-dmg generates a DMG with a name like "Atoll 2.3.0.dmg"
-          # Rename it to match our required DMG_NAME format (e.g. Atoll-2.3.0-nightly.dmg)
+          # sindresorhus/create-dmg generates a DMG with a name like "IslandBoard 2.3.0.dmg"
+          # Rename it to match our required DMG_NAME format (e.g. IslandBoard-2.3.0-nightly.dmg)
           GENERATED_DMG=$(find build/ -maxdepth 1 -name "*.dmg" | head -1)
           if [ -n "$GENERATED_DMG" ] && [ "$GENERATED_DMG" != "build/${DMG_NAME}" ]; then
             mv "$GENERATED_DMG" "build/${DMG_NAME}"
@@ -612,7 +612,7 @@ jobs:
             # Use awk to insert after <channel> + <title>
             export NEW_ITEM
             awk '
-              /<title>Atoll<\/title>/ { print; print ENVIRON["NEW_ITEM"]; next }
+              /<title>IslandBoard<\/title>/ { print; print ENVIRON["NEW_ITEM"]; next }
               { print }
             ' "$APPCAST_PATH" > "${APPCAST_PATH}.tmp"
             mv "${APPCAST_PATH}.tmp" "$APPCAST_PATH"
@@ -621,7 +621,7 @@ jobs:
             printf '<?xml version="1.0" standalone="yes"?>\n' > "$APPCAST_PATH"
             printf '<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">\n' >> "$APPCAST_PATH"
             printf '    <channel>\n' >> "$APPCAST_PATH"
-            printf '        <title>Atoll</title>\n' >> "$APPCAST_PATH"
+            printf '        <title>IslandBoard</title>\n' >> "$APPCAST_PATH"
             echo "$NEW_ITEM" >> "$APPCAST_PATH"
             printf '    </channel>\n' >> "$APPCAST_PATH"
             printf '</rss>\n' >> "$APPCAST_PATH"
@@ -629,7 +629,7 @@ jobs:
 
           # Commit and push the updated appcast to main
           # All feed URLs point to raw.githubusercontent.com/.../main/Updates/
-          git config user.name "Atoll-XML-Updater[bot]"
+          git config user.name "IslandBoard-XML-Updater[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
           # Stash appcast changes, checkout main, apply, push
@@ -675,7 +675,7 @@ jobs:
           ' CHANGELOG.md > CHANGELOG.md.tmp
           mv CHANGELOG.md.tmp CHANGELOG.md
 
-          git config user.name "Atoll-XML-Updater[bot]"
+          git config user.name "IslandBoard-XML-Updater[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add CHANGELOG.md
           git commit -m "ci: archive changelog for v${VERSION} [skip ci]" || echo "No changes to commit"

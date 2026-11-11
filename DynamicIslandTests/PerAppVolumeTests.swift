@@ -1,5 +1,5 @@
 /*
- * Atoll (DynamicIsland)
+ * IslandBoard (DynamicIsland)
  * Copyright (C) 2024-2026 Atoll Contributors
  *
  * This program is free software: you can redistribute it and/or modify
@@ -18,7 +18,7 @@
 
 import CoreAudio
 import XCTest
-@testable import Atoll
+@testable import IslandBoard
 
 /// Covers the decisions the per-app volume feature makes before it touches
 /// CoreAudio: which apps get a tap, what gain that tap runs at, how helper
@@ -28,7 +28,7 @@ final class PerAppVolumeTests: XCTestCase {
     // MARK: - needsTap
 
     func testAppAtFullVolumeAndUnmutedIsNotTapped() {
-        // The whole point of the check: Atoll must not insert itself into the
+        // The whole point of the check: IslandBoard must not insert itself into the
         // audio path of every app on the Mac just to list it.
         XCTAssertFalse(PerAppVolumeManager.needsTap(volume: 1.0, isMuted: false))
     }

@@ -74,7 +74,7 @@ enum MediaSourceCapabilities {
         case .youtubeMusic:
             return .init(name: String(localized: "YouTube Music"),
                          favoriting: .full, shuffle: .full, repeatMode: .full,
-                         note: String(localized: "The th-ch desktop app's local API server, which Atoll is already authenticated with."))
+                         note: String(localized: "The th-ch desktop app's local API server, which IslandBoard is already authenticated with."))
         case .tidal:
             return .init(name: String(localized: "TIDAL"),
                          favoriting: .readOnly, shuffle: .full, repeatMode: .full,
@@ -87,6 +87,10 @@ enum MediaSourceCapabilities {
             return .init(name: String(localized: "Amazon Music"),
                          favoriting: .none, shuffle: .full, repeatMode: .full,
                          note: String(localized: "Amazon Music ships no scripting dictionary, and the system media interface has no way to favourite."))
+        case .neteaseMusic:
+            return .init(name: String(localized: "NetEase Music"),
+                         favoriting: .none, shuffle: .none, repeatMode: .none,
+                         note: String(localized: "Follows macOS Now Playing for title, artwork, elapsed time and play/pause/next/previous. NetEase reports no favourite, shuffle or repeat state, so those controls are not offered."))
         }
     }
 

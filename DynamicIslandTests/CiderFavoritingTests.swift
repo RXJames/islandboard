@@ -1,5 +1,5 @@
 /*
- * Atoll (DynamicIsland)
+ * IslandBoard (DynamicIsland)
  * Copyright (C) 2024-2026 Atoll Contributors
  *
  * This program is free software: you can redistribute it and/or modify
@@ -18,7 +18,7 @@
 
 import XCTest
 
-@testable import Atoll
+@testable import IslandBoard
 
 /// Nobody on the project has Cider installed, so what these pin down is the
 /// wire format: the paths, the header, the request body, and how each kind of

@@ -1,5 +1,5 @@
 /*
- * Atoll (DynamicIsland)
+ * IslandBoard (DynamicIsland)
  * Copyright (C) 2024-2026 Atoll Contributors
  * Adapted from SwiftTerm (https://github.com/migueldeicaza/SwiftTerm)
  *
@@ -199,8 +199,11 @@ class TerminalManager: ObservableObject {
         return v
     }()
 
+    private var keyFocusObservers: [NSObjectProtocol] = []
+
     private init() {
         installClickFocusMonitor()
+        installKeyFocusObservers()
     }
 
     /// SwiftTerm claims first responder neither from `mouseDown` (its override
@@ -216,11 +219,40 @@ class TerminalManager: ObservableObject {
         focusClickMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
             guard let self,
                   let window = event.window,
-                  window === self.containerView.window,
-                  window.firstResponder !== self.terminalView else { return event }
-            self.focusTerminalIfPossible()
+                  window === self.containerView.window else { return event }
+            // A focused-looking caret in a non-key window is the common
+            // failure mode: the first responder can already be the terminal
+            // even though keys are going to another app. Re-assert on every
+            // click, not only when the responder differs.
+            if !window.isKeyWindow || window.firstResponder !== self.terminalView {
+                self.focusTerminalIfPossible()
+            }
             return event
         }
+    }
+
+    /// The notch panel becomes key asynchronously after a tab click, after the
+    /// app is reactivated, or after another popover closes. Reassert terminal
+    /// focus when that happens so a blue caret always means usable input.
+    private func installKeyFocusObservers() {
+        guard keyFocusObservers.isEmpty else { return }
+        let center = NotificationCenter.default
+        keyFocusObservers.append(
+            center.addObserver(forName: NSWindow.didBecomeKeyNotification, object: nil, queue: .main) { [weak self] note in
+                guard let self,
+                      let window = self.containerView.window,
+                      note.object as? NSWindow === window,
+                      DynamicIslandViewCoordinator.shared.currentView == .terminal else { return }
+                self.focusTerminalIfPossible()
+            }
+        )
+        keyFocusObservers.append(
+            center.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
+                guard let self,
+                      DynamicIslandViewCoordinator.shared.currentView == .terminal else { return }
+                self.focusTerminalIfPossible()
+            }
+        )
     }
 
     // MARK: - Lifecycle
@@ -597,16 +629,17 @@ class TerminalManager: ObservableObject {
     }
 
     /// Makes terminal view first responder when terminal tab opens.
-    /// Retries a few times to cover mount/animation timing so typing works immediately.
+    /// Retries across the tab transition/window-resize window so typing works
+    /// immediately instead of requiring a second click inside the terminal.
     func focusTerminalIfPossible() {
-        focusTerminalIfPossible(attemptsRemaining: 3)
+        focusTerminalIfPossible(attemptsRemaining: 8)
     }
 
     private func focusTerminalIfPossible(attemptsRemaining: Int) {
         guard let view = terminalView else { return }
         guard let window = containerView.window ?? view.window else {
             guard attemptsRemaining > 0 else { return }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.06) { [weak self] in
                 self?.focusTerminalIfPossible(attemptsRemaining: attemptsRemaining - 1)
             }
             return
@@ -617,13 +650,22 @@ class TerminalManager: ObservableObject {
         }
         if !window.isKeyWindow {
             window.makeKeyAndOrderFront(nil)
+            window.makeKey()
         }
 
-        guard window.firstResponder !== view else { return }
-        if !window.makeFirstResponder(view), attemptsRemaining > 0 {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
-                self?.focusTerminalIfPossible(attemptsRemaining: attemptsRemaining - 1)
-            }
+        if window.firstResponder !== view {
+            _ = window.makeFirstResponder(view)
+        }
+
+        let ready = NSApp.isActive && window.isKeyWindow && window.firstResponder === view
+        guard !ready, attemptsRemaining > 0 else { return }
+
+        // The tab slide is 0.32s and the window can resize after the view
+        // appears; retry beyond that window instead of giving up after 150ms.
+        let attempt = 8 - attemptsRemaining
+        let delay = min(0.06 + Double(attempt) * 0.05, 0.4)
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+            self?.focusTerminalIfPossible(attemptsRemaining: attemptsRemaining - 1)
         }
     }
 

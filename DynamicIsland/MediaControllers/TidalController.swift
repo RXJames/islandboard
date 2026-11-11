@@ -1,9 +1,9 @@
 /*
- * Atoll (DynamicIsland)
+ * IslandBoard (DynamicIsland)
  * Copyright (C) 2024-2026 Atoll Contributors
  *
  * Originally from boring.notch project
- * Modified and adapted for Atoll (DynamicIsland)
+ * Modified and adapted for IslandBoard (DynamicIsland)
  * See NOTICE for details.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -144,7 +144,7 @@ final class TidalController: FilteredNowPlayingController {
 
 // MARK: - Accessibility
 
-/// Everything Atoll can drive in TIDAL that TIDAL does not otherwise expose,
+/// Everything IslandBoard can drive in TIDAL that TIDAL does not otherwise expose,
 /// at file scope so the Now Playing source can reach it without owning a
 /// controller.
 ///
@@ -162,7 +162,7 @@ final class TidalController: FilteredNowPlayingController {
 enum TidalAccessibility {
     static let bundleIdentifier = TidalController.bundleIdentifier
 
-    /// All of this needs the accessibility permission Atoll already asks for
+    /// All of this needs the accessibility permission IslandBoard already asks for
     /// elsewhere; without it the tree is empty rather than wrong.
     static var isAvailable: Bool {
         AXIsProcessTrusted() && runningApp != nil

@@ -1,5 +1,5 @@
 /*
- * Atoll (DynamicIsland)
+ * IslandBoard (DynamicIsland)
  * Copyright (C) 2024-2026 Atoll Contributors
  *
  * This program is free software: you can redistribute it and/or modify
@@ -20,7 +20,7 @@ import AppKit
 import Defaults
 import XCTest
 
-@testable import Atoll
+@testable import IslandBoard
 
 /// "Save History Across Restarts" is a privacy promise, so the parts that make
 /// it true are worth pinning down: nothing written while it is off, nothing

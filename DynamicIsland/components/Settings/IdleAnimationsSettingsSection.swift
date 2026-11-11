@@ -1,5 +1,5 @@
 /*
- * Atoll (DynamicIsland)
+ * IslandBoard (DynamicIsland)
  * Copyright (C) 2024-2026 Atoll Contributors
  *
  * This program is free software: you can redistribute it and/or modify
@@ -37,6 +37,7 @@ struct IdleAnimationsSettingsSection: View {
     @Default(.idlePetSizeScale) var idlePetSizeScale
     
     @State private var showingFilePicker = false
+    @State private var showingCodexPetPicker = false
     @State private var showingURLSheet = false
     @State private var urlInput = ""
     @State private var nameInput = ""
@@ -89,6 +90,11 @@ struct IdleAnimationsSettingsSection: View {
                                         print("🔧 [Edit] Lottie URL: \(url)")
                                         editorSourceURL = url
                                         editorIsRemote = true
+
+                                    case .codexPet(let directory):
+                                        print("🔧 [Edit] Codex pet: \(directory.lastPathComponent)")
+                                        editorSourceURL = directory
+                                        editorIsRemote = false
                                     }
                                     
                                     // Show editor with slight delay to ensure state is set
@@ -107,6 +113,8 @@ struct IdleAnimationsSettingsSection: View {
                             urlInput = ""
                             nameInput = ""
                             showingURLSheet = true
+                        } onAddCodexPet: {
+                            showingCodexPetPicker = true
                         }
                     }
                     .padding(.vertical, 12)
@@ -162,7 +170,7 @@ struct IdleAnimationsSettingsSection: View {
             }
         } footer: {
             if showNotHumanFace {
-                Text("Choose animation to display when Atoll is idle. Tap to select, hold to delete custom animations.")
+                Text("Choose animation to display when IslandBoard is idle. Tap to select, hold to delete custom animations.")
             }
         }
         .fileImporter(
@@ -171,6 +179,13 @@ struct IdleAnimationsSettingsSection: View {
             allowsMultipleSelection: false
         ) { result in
             handleFileImport(result)
+        }
+        .fileImporter(
+            isPresented: $showingCodexPetPicker,
+            allowedContentTypes: [UTType.folder],
+            allowsMultipleSelection: false
+        ) { result in
+            handleCodexPetImport(result)
         }
         .sheet(isPresented: $showingURLSheet) {
             URLImportSheet(
@@ -271,6 +286,51 @@ struct IdleAnimationsSettingsSection: View {
         }
     }
     
+    /// Adds a Codex/petdex pet by picking its folder. Pet folders living
+    /// outside `~/.codex/pets` are copied there first, so they are picked up
+    /// by the launch-time sync and survive the app being moved.
+    private func handleCodexPetImport(_ result: Result<[URL], Error>) {
+        switch result {
+        case .success(let urls):
+            guard let folder = urls.first else { return }
+            do {
+                let pets = try CodexPetImport.importPets(from: folder)
+                var animations = Defaults[.customIdleAnimations]
+                var lastAdded: CustomIdleAnimation?
+
+                for pet in pets {
+                    if let existing = animations.first(where: { animation in
+                        if case .codexPet(let directory) = animation.source {
+                            return directory.standardizedFileURL == pet.directory.standardizedFileURL
+                        }
+                        return false
+                    }) {
+                        lastAdded = existing
+                        continue
+                    }
+                    let animation = CustomIdleAnimation(
+                        name: pet.displayName,
+                        source: .codexPet(pet.directory),
+                        speed: 1.0,
+                        isBuiltIn: false
+                    )
+                    animations.append(animation)
+                    lastAdded = animation
+                }
+
+                Defaults[.customIdleAnimations] = animations
+                if let lastAdded { selectedIdleAnimation = lastAdded }
+            } catch {
+                importError = error.localizedDescription
+                showingError = true
+            }
+
+        case .failure(let error):
+            importError = error.localizedDescription
+            showingError = true
+        }
+    }
+
     private func handleURLImport() {
         guard let url = URL(string: urlInput), !nameInput.isEmpty else {
             importError = "Please provide both a valid URL and name"
@@ -415,6 +475,16 @@ struct AnimationPreview: View {
                 loopMode: .loop
             ))
             .frame(width: 60, height: 40)
+
+        case .codexPet(let directory):
+            if let pet = CodexPetStore.shared.pet(at: directory) {
+                CodexPetView(pet: pet, speed: animation.speed)
+                    .frame(width: 60, height: 40)
+            } else {
+                Image(systemName: "pawprint")
+                    .foregroundStyle(.secondary)
+                    .frame(width: 60, height: 40)
+            }
         }
     }
 }
@@ -423,6 +493,7 @@ struct AnimationPreview: View {
 struct AddAnimationCard: View {
     let onAddFile: () -> Void
     let onAddURL: () -> Void
+    let onAddCodexPet: () -> Void
     
     @State private var showingMenu = false
     
@@ -472,8 +543,20 @@ struct AddAnimationCard: View {
                     }
                     .buttonStyle(.plain)
                     .padding(8)
+
+                    Divider()
+
+                    Button {
+                        showingMenu = false
+                        onAddCodexPet()
+                    } label: {
+                        Label("Import Codex Pet Folder...", systemImage: "folder.badge.plus")
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .buttonStyle(.plain)
+                    .padding(8)
                 }
-                .frame(width: 180)
+                .frame(width: 220)
             }
             
             Text("Add New")

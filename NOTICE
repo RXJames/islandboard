@@ -1,4 +1,8 @@
-Atoll (DynamicIsland) - NOTICE
+IslandBoard (DynamicIsland) - NOTICE
+
+IslandBoard is a fork of the Atoll project (DynamicIsland), originally published at
+https://github.com/Ebullioscopic/Atoll and licensed under the GNU General Public
+License v3.0. All copyright notices from the original project are retained.
 
 This product includes software derived from the boring.notch project,
 modified and adapted for Atoll (DynamicIsland). The boring.notch project

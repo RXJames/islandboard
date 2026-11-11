@@ -1,5 +1,5 @@
 /*
- * Atoll (DynamicIsland)
+ * IslandBoard (DynamicIsland)
  * Copyright (C) 2024-2026 Atoll Contributors
  *
  * This program is free software: you can redistribute it and/or modify
@@ -170,11 +170,18 @@ struct AnimationEditorView: View {
                 .frame(width: 30 * previewScale, height: 20 * previewScale)
             
             Group {
-                LottieView(state: LUStateData(
-                    type: .loadedFrom(sourceURL),
-                    speed: speed,
-                    loopMode: loopMode.lottieLoopMode
-                ))
+                if let existing = existingAnimation,
+                   case .codexPet(let directory) = existing.source,
+                   let pet = CodexPetStore.shared.pet(at: directory) {
+                    // Codex/petdex pets are sprite atlases, not Lottie.
+                    CodexPetView(pet: pet, speed: speed)
+                } else {
+                    LottieView(state: LUStateData(
+                        type: .loadedFrom(sourceURL),
+                        speed: speed,
+                        loopMode: loopMode.lottieLoopMode
+                    ))
+                }
             }
             .frame(width: cropWidth * scale * previewScale, height: cropHeight * scale * previewScale)
             .offset(x: offsetX * previewScale, y: offsetY * previewScale)
@@ -365,7 +372,7 @@ struct AnimationEditorView: View {
                             VStack(alignment: .leading, spacing: 4) {
                                 Text("Expand notch to follow animation width")
                                     .fontWeight(.medium)
-                                Text("Enable when scaling beyond 30x20px so the Atoll opens gracefully.")
+                                Text("Enable when scaling beyond 30x20px so the IslandBoard opens gracefully.")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }

@@ -17,7 +17,7 @@ import Combine
 /// out inside `NSScreen.auxiliaryTopLeftArea` and offers no way to tell it that
 /// something else is using part of that space -- both auxiliary areas are
 /// read-only and derived from the display hardware. So rather than reserving
-/// room, Atoll measures what is already there and moves aside.
+/// room, IslandBoard measures what is already there and moves aside.
 ///
 /// The measurement is the accessibility API's view of the menu bar, which is
 /// how the geometry is available at all: every menu reports its own position

@@ -27,6 +27,6 @@ final class DynamicIslandUITests: XCTestCase {
     // The notch panel is present and exposed to accessibility.
     func testNotchExpansion() throws {
         let notch = app.descendants(matching: .any)["AtollNotch"]
-        XCTAssertTrue(notch.waitForExistence(timeout: 15.0), "The Atoll notch should be visible.")
+        XCTAssertTrue(notch.waitForExistence(timeout: 15.0), "The IslandBoard notch should be visible.")
     }
 }

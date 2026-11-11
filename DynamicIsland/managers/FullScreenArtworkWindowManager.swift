@@ -1,5 +1,5 @@
 /*
- * Atoll (DynamicIsland)
+ * IslandBoard (DynamicIsland)
  * Copyright (C) 2024-2026 Atoll Contributors
  *
  * This program is free software: you can redistribute it and/or modify
@@ -951,7 +951,7 @@ final class FullScreenArtworkWindowManager: ObservableObject {
             let prepared = await Self.prepareCustomLiveWallpaperAsset(
                 from: videoURL,
                 assetID: assetID,
-                displayName: displayName.isEmpty ? "Atoll Canvas" : displayName,
+                displayName: displayName.isEmpty ? "IslandBoard Canvas" : displayName,
                 manifestURL: manifestURL,
                 videosDirectoryURL: videosDirectoryURL,
                 thumbnailsDirectoryURL: thumbnailsDirectoryURL,

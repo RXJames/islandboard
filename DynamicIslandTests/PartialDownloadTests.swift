@@ -1,5 +1,5 @@
 /*
- * Atoll (DynamicIsland)
+ * IslandBoard (DynamicIsland)
  * Copyright (C) 2024-2026 Atoll Contributors
  *
  * This program is free software: you can redistribute it and/or modify
@@ -18,7 +18,7 @@
 
 import XCTest
 
-@testable import Atoll
+@testable import IslandBoard
 
 /// The download live activity is driven purely by what the Downloads folder
 /// looks like from one scan to the next, so the browsers' naming conventions
@@ -194,7 +194,7 @@ final class PartialDownloadTests: XCTestCase {
 ///
 /// The rules `PartialDownload` states are only half the feature: the other
 /// half is which files each scan hands it, and that is where the awkward
-/// cases live -- a download already running when Atoll starts, one that lands
+/// cases live -- a download already running when IslandBoard starts, one that lands
 /// while another is still writing, and a destination that was on disk before
 /// anything was downloaded onto it.
 @MainActor
@@ -236,7 +236,7 @@ final class DownloadScanSequenceTests: XCTestCase {
         XCTAssertFalse(manager.isDownloading)
     }
 
-    /// A download already running when Atoll starts belongs to whoever started
+    /// A download already running when IslandBoard starts belongs to whoever started
     /// it, and does not get an activity of its own.
     func testDownloadRunningAtLaunchIsIgnored() {
         let manager = makeManager()

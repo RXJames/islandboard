@@ -1,5 +1,5 @@
 /*
- * Atoll (DynamicIsland)
+ * IslandBoard (DynamicIsland)
  * Copyright (C) 2024-2026 Atoll Contributors
  *
  * This program is free software: you can redistribute it and/or modify
@@ -140,7 +140,7 @@ struct ExtensionsSettingsView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             } else {
-                Text("Enable extensions to allow third-party apps to display live activities and lock screen widgets in Atoll.")
+                Text("Enable extensions to allow third-party apps to display live activities and lock screen widgets in IslandBoard.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

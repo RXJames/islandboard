@@ -1,5 +1,5 @@
 /*
- * Atoll (DynamicIsland)
+ * IslandBoard (DynamicIsland)
  * Copyright (C) 2024-2026 Atoll Contributors
  *
  * This program is free software: you can redistribute it and/or modify
@@ -17,7 +17,7 @@
  */
 
 import XCTest
-@testable import Atoll
+@testable import IslandBoard
 
 /// The line between metadata that identifies a song and metadata that only
 /// looks like it does.

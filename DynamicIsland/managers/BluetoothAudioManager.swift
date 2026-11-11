@@ -1,5 +1,5 @@
 /*
- * Atoll (DynamicIsland)
+ * IslandBoard (DynamicIsland)
  * Copyright (C) 2024-2026 Atoll Contributors
  *
  * This program is free software: you can redistribute it and/or modify
@@ -150,6 +150,13 @@ class BluetoothAudioManager: ObservableObject {
         // Hopping to the next main-queue turn lets `shared` finish publishing
         // before any of that work runs, so the re-entry cannot happen.
         DispatchQueue.main.async { [weak self] in
+            // XCTest launches this app as a host before it connects to the
+            // runner. IOBluetooth can block the main thread on a TCC prompt in
+            // that environment, which prevents the test runner from ever
+            // connecting. Unit tests do not exercise Bluetooth devices.
+            guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else {
+                return
+            }
             self?.checkInitialDevices()
         }
     }

@@ -1,9 +1,9 @@
 /*
- * Atoll (DynamicIsland)
+ * IslandBoard (DynamicIsland)
  * Copyright (C) 2024-2026 Atoll Contributors
  *
  * Originally from boring.notch project
- * Modified and adapted for Atoll (DynamicIsland)
+ * Modified and adapted for IslandBoard (DynamicIsland)
  * See NOTICE for details.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -24,9 +24,16 @@ import AppKit
 import SwiftUI
 import Sparkle
 
+extension Notification.Name {
+    /// Posted after the Settings window has been created/shown so the Weather
+    /// tab can be selected. Home's unavailable-weather tap uses this.
+    static let atollOpenWeatherSettings = Notification.Name("AtollOpenWeatherSettings")
+}
+
 class SettingsWindowController: NSWindowController {
     static let shared = SettingsWindowController()
     private var updaterController: SPUStandardUpdaterController?
+    private var pendingWeatherTabRequest = false
     
     private init() {
         let window = NSWindow(
@@ -54,7 +61,7 @@ class SettingsWindowController: NSWindowController {
     private func setupWindow() {
         guard let window = window else { return }
         
-        window.title = "Atoll Settings"
+        window.title = "IslandBoard Settings"
         window.titlebarAppearsTransparent = false
         window.titleVisibility = .visible
         window.toolbarStyle = .unified
@@ -83,6 +90,23 @@ class SettingsWindowController: NSWindowController {
         ScreenCaptureVisibilityManager.shared.register(window, scope: .panelsOnly)
     }
     
+    /// Opens Settings and lands on the Weather tab. The notification is
+    /// deferred until after `showWindow()` has created/mounted the SwiftUI
+    /// content; the pending flag is a second safety net for a first open.
+    func showWeatherSettings() {
+        pendingWeatherTabRequest = true
+        showWindow()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            NotificationCenter.default.post(name: .atollOpenWeatherSettings, object: nil)
+        }
+    }
+
+    func consumePendingWeatherTabRequest() -> Bool {
+        let pending = pendingWeatherTabRequest
+        pendingWeatherTabRequest = false
+        return pending
+    }
+
     func showWindow() {
         // Ensure window exists
         _ = window

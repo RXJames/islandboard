@@ -1,5 +1,5 @@
 /*
- * Atoll (DynamicIsland)
+ * IslandBoard (DynamicIsland)
  * Copyright (C) 2024-2026 Atoll Contributors
  *
  * This program is free software: you can redistribute it and/or modify
@@ -174,11 +174,11 @@ class SystemOSDManager {
     ///
     /// `enableSystemHUD()` restarts the helper on a detached background `Task`,
     /// which never runs to completion when the process is already terminating —
-    /// so a SIGSTOP-frozen OSDUIHelper stays frozen after Atoll quits, breaking
-    /// every native OSD Atoll does not replace (keyboard backlight,
+    /// so a SIGSTOP-frozen OSDUIHelper stays frozen after IslandBoard quits, breaking
+    /// every native OSD IslandBoard does not replace (keyboard backlight,
     /// external-display brightness, …) and leaving a stuck HUD on screen. This
     /// sends SIGCONT inline and blocks until it lands, guaranteeing the helper
-    /// is resumed before Atoll exits. Idempotent; safe to call from a
+    /// is resumed before IslandBoard exits. Idempotent; safe to call from a
     /// termination handler.
     public static func resumeOSDUIHelperForTermination() {
         suppressionState.withLock { state in

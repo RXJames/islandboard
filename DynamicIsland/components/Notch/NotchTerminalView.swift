@@ -1,5 +1,5 @@
 /*
- * Atoll (DynamicIsland)
+ * IslandBoard (DynamicIsland)
  * Copyright (C) 2024-2026 Atoll Contributors
  *
  * This program is free software: you can redistribute it and/or modify
@@ -193,6 +193,16 @@ struct NotchTerminalView: View {
         .onAppear {
             terminalManager.refreshTerminalAppearanceIfNeeded()
             terminalManager.focusTerminalIfPossible()
+            // The horizontal page transition and the taller terminal window
+            // settle after onAppear; reclaim focus once they have finished.
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 360_000_000)
+                guard !Task.isCancelled else { return }
+                terminalManager.focusTerminalIfPossible()
+                try? await Task.sleep(nanoseconds: 320_000_000)
+                guard !Task.isCancelled else { return }
+                terminalManager.focusTerminalIfPossible()
+            }
         }
     }
 

@@ -1,9 +1,9 @@
 /*
- * Atoll (DynamicIsland)
+ * IslandBoard (DynamicIsland)
  * Copyright (C) 2024-2026 Atoll Contributors
  *
  * Originally from boring.notch project
- * Modified and adapted for Atoll (DynamicIsland)
+ * Modified and adapted for IslandBoard (DynamicIsland)
  * See NOTICE for details.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -454,7 +454,7 @@ enum AppleMusicFavoriting {
     /// `favorited` and `loved` are the same property under the same AppleEvent
     /// code (`pLov`); Music.app renamed it when Love became Favorite. A script
     /// is compiled against the name, though, so the one the running version
-    /// does not know fails to compile -- and Atoll still supports macOS 14,
+    /// does not know fails to compile -- and IslandBoard still supports macOS 14,
     /// where it is `loved`. Try the current name first and fall back, rather
     /// than branching on an OS version that only approximates which Music.app
     /// is installed.

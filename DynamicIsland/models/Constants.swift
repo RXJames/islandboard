@@ -1,9 +1,9 @@
 /*
- * Atoll (DynamicIsland)
+ * IslandBoard (DynamicIsland)
  * Copyright (C) 2024-2026 Atoll Contributors
  *
  * Originally from boring.notch project
- * Modified and adapted for Atoll (DynamicIsland)
+ * Modified and adapted for IslandBoard (DynamicIsland)
  * See NOTICE for details.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -129,11 +129,13 @@ enum AnimationLoopMode: String, Codable, CaseIterable {
 enum AnimationSource: Codable, Hashable, Equatable {
     case lottieFile(URL)        // Local file (in app support or bundle)
     case lottieURL(URL)         // Remote URL
-    
+    case codexPet(URL)          // A Codex/petdex pet directory (pet.json + spritesheet)
+
     var displayType: String {
         switch self {
         case .lottieFile: return "Local"
         case .lottieURL: return "Remote"
+        case .codexPet: return "Codex"
         }
     }
 }
@@ -455,6 +457,7 @@ enum MediaControllerType: String, CaseIterable, Identifiable, Defaults.Serializa
     case amazonMusic = "Amazon Music"
     case tidal = "TIDAL"
     case cider = "Cider"
+    case neteaseMusic = "NetEase Music"
     
     var id: String { self.rawValue }
     
@@ -467,6 +470,7 @@ enum MediaControllerType: String, CaseIterable, Identifiable, Defaults.Serializa
         case .amazonMusic: return String(localized: "Amazon Music")
         case .tidal: return String(localized: "TIDAL")
         case .cider: return String(localized: "Cider")
+        case .neteaseMusic: return String(localized: "NetEase Music")
         }
     }
 }
@@ -1036,6 +1040,18 @@ extension Defaults.Keys {
     static let animationTransformOverrides = Key<[String: AnimationTransformConfig]>("animationTransformOverrides", default: [:])
     static let tileShowLabels = Key<Bool>("tileShowLabels", default: false)
     static let showCalendar = Key<Bool>("showCalendar", default: true)
+    static let enableHomeWeather = Key<Bool>("enableHomeWeather", default: true)
+    static let homeWeatherLocationMode = Key<HomeWeatherLocationMode>(
+        "homeWeatherLocationMode",
+        default: .currentLocation
+    )
+    static let homeWeatherDisplayMode = Key<HomeWeatherDisplayMode>(
+        "homeWeatherDisplayMode",
+        default: .todayAndFiveDays
+    )
+    static let homeWeatherCityName = Key<String>("homeWeatherCityName", default: "")
+    static let homeWeatherCityLatitude = Key<Double>("homeWeatherCityLatitude", default: 0)
+    static let homeWeatherCityLongitude = Key<Double>("homeWeatherCityLongitude", default: 0)
     static let hideCompletedReminders = Key<Bool>("hideCompletedReminders", default: true)
     static let hideAllDayEvents = Key<Bool>("hideAllDayEvents", default: false)
     static let sliderColor = Key<SliderColorEnum>(
@@ -1542,6 +1558,11 @@ extension Defaults.Keys {
     /// Ids absent from the list (new features) append after the known ones.
     static let tabOrder = Key<[String]>("tabOrder", default: [])
     static let enableTrackpadTabSwipe = Key<Bool>("enableTrackpadTabSwipe", default: true)
+    static let enableControlCenterTab = Key<Bool>("enableControlCenterTab", default: true)
+    static let enableSystemMonitorTab = Key<Bool>("enableSystemMonitorTab", default: true)
+    /// Editable Control Center tiles: order, 3 sizes, visibility, tint.
+    /// Empty means "use ControlTileKind.defaultLayout".
+    static let controlCenterLayout = Key<[ControlTileConfig]>("controlCenterLayout", default: [])
     
     // Helper to determine the default media controller based on macOS version
     static var defaultMediaController: MediaControllerType {
@@ -1579,7 +1600,7 @@ extension Defaults.Keys {
     ///
     /// Settings has always documented Cmd+Shift+V ("similar to Windows+V on PC") while the
     /// shortcut was registered as Cmd+Shift+C. Changing the default alone fixes nothing for
-    /// anyone who has already launched Atoll: `KeyboardShortcuts.Name` writes its default into
+    /// anyone who has already launched IslandBoard: `KeyboardShortcuts.Name` writes its default into
     /// UserDefaults on first run and never overwrites it, so the old value would win forever.
     ///
     /// Only a shortcut still sitting on the old default is moved. Anyone who picked their own

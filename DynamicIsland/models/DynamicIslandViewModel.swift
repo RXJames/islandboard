@@ -1,5 +1,5 @@
 /*
- * Atoll (DynamicIsland)
+ * IslandBoard (DynamicIsland)
  * Copyright (C) 2024-2026 Atoll Contributors
  *
  * This program is free software: you can redistribute it and/or modify
@@ -194,6 +194,14 @@ class DynamicIslandViewModel: NSObject, ObservableObject {
             .store(in: &cancellables)
         
         setupDetectorObserver()
+
+        coordinator.$currentView
+            .removeDuplicates()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                self?.refreshOpenNotchSizeForCurrentTab()
+            }
+            .store(in: &cancellables)
 
         ReminderLiveActivityManager.shared.$activeWindowReminders
             .removeDuplicates()
@@ -458,10 +466,36 @@ class DynamicIslandViewModel: NSObject, ObservableObject {
             isHomeTabActive: coordinator.currentView == .home
         )
 
+        if coordinator.currentView == .monitor {
+            adjustedSize.height = max(adjustedSize.height, monitorOpenNotchHeight)
+            return adjustedSize
+        }
+
         return statsAdjustedNotchSize(
             from: adjustedSize,
             isStatsTabActive: coordinator.currentView == .stats,
             secondRowProgress: coordinator.statsSecondRowExpansion
+        )
+    }
+
+    /// Recompute the open window size after a tab switch. Some tabs (notably
+    /// System Monitor) are taller than the base Home height; without this the
+    /// SwiftUI surface grows but the NSWindow keeps clipping it.
+    func refreshOpenNotchSizeForCurrentTab() {
+        guard notchState == .open else { return }
+        let updated = calculateDynamicNotchSize()
+        if notchSize != updated {
+            withAnimation(.smooth) {
+                notchSize = updated
+            }
+        }
+        // Always reconcile the AppKit window, even when `notchSize` already
+        // holds the right value: open() can set the model size before the
+        // window host is ready, leaving the actual NSWindow at the old height.
+        AppDelegate.shared?.ensureWindowSize(
+            addShadowPadding(to: updated, isMinimalistic: Defaults[.enableMinimalisticUI]),
+            animated: true,
+            force: false
         )
     }
 

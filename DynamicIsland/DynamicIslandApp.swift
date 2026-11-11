@@ -1,5 +1,5 @@
 /*
- * Atoll (DynamicIsland)
+ * IslandBoard (DynamicIsland)
  * Copyright (C) 2024-2026 Atoll Contributors
  *
  * This program is free software: you can redistribute it and/or modify
@@ -49,12 +49,16 @@ struct DynamicNotchApp: App {
 
     var body: some Scene {
         MenuBarExtra("dynamic.island", systemImage: "mountain.2.fill", isInserted: $showMenuBarIcon) {
+            Button("System Monitor…") {
+                SystemMonitorWindowController.shared.showWindow()
+            }
+            .keyboardShortcut("m", modifiers: [.command, .shift])
             Button("Settings") {
                 SettingsWindowController.shared.showWindow()
             }
             CheckForUpdatesView(updater: updaterController.updater)
             Divider()
-            Button("Restart Atoll") {
+            Button("Restart IslandBoard") {
                 guard let bundleIdentifier = Bundle.main.bundleIdentifier else { return }
 
                 let workspace = NSWorkspace.shared
@@ -94,8 +98,15 @@ final class FirstMouseHostingView<Content: View>: NSHostingView<Content> {
 }
 
 extension AppDelegate {
+    /// SwiftUI's `@NSApplicationDelegateAdaptor` owns the delegate, but
+    /// `NSApplication.shared.delegate` is not reliably this concrete class
+    /// early in launch (and can still be the SwiftUI wrapper later). Keep a
+    /// direct reference so dynamic notch resizing always reaches the window
+    /// manager.
+    private(set) static weak var instance: AppDelegate?
+
     static var shared: AppDelegate? {
-        NSApplication.shared.delegate as? AppDelegate
+        instance ?? (NSApplication.shared.delegate as? AppDelegate)
     }
 }
 
@@ -684,6 +695,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // transaction. Avoiding that no-op matters during hover/click opens.
         guard window.frame != targetFrame else { return }
         window.setFrame(targetFrame, display: true)
+        // NSHostingView can keep its old frame when the panel is resized
+        // programmatically; make the hosted SwiftUI surface follow the window
+        // immediately, otherwise taller tabs are laid out into the old viewport
+        // and appear clipped.
+        if let content = window.contentView {
+            content.frame = NSRect(origin: .zero, size: targetFrame.size)
+            content.needsLayout = true
+            content.layoutSubtreeIfNeeded()
+        }
     }
 
     private func shouldAnimateResize(for newSize: CGSize) -> Bool {
@@ -693,6 +713,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         return true
     }
     
+    override init() {
+        super.init()
+        Self.instance = self
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         let userInfo: [String: Any] = [
             AtollDistributedNotifications.UserInfoKey.sourcePID: NSNumber(value: ProcessInfo.processInfo.processIdentifier)
@@ -1322,7 +1347,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func exportLogs() {
         let savePanel = NSSavePanel()
-        savePanel.nameFieldStringValue = "Atoll_Logs.zip"
+        savePanel.nameFieldStringValue = "IslandBoard_Logs.zip"
         savePanel.title = "Export Logs & Crash Reports"
         
         savePanel.begin { response in
@@ -1348,13 +1373,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     
                     let diagDir = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Library/Logs/DiagnosticReports")
                     let allFiles = (try? FileManager.default.contentsOfDirectory(at: diagDir, includingPropertiesForKeys: nil)) ?? []
-                    for file in allFiles where file.lastPathComponent.contains("Atoll") {
+                    for file in allFiles where file.lastPathComponent.contains("IslandBoard") {
                         try? FileManager.default.copyItem(at: file, to: tempDir.appendingPathComponent(file.lastPathComponent))
                     }
                     
                     let sysDiagDir = URL(fileURLWithPath: "/Library/Logs/DiagnosticReports")
                     let sysFiles = (try? FileManager.default.contentsOfDirectory(at: sysDiagDir, includingPropertiesForKeys: nil)) ?? []
-                    for file in sysFiles where file.lastPathComponent.contains("Atoll") {
+                    for file in sysFiles where file.lastPathComponent.contains("IslandBoard") {
                         try? FileManager.default.copyItem(at: file, to: tempDir.appendingPathComponent(file.lastPathComponent))
                     }
                     

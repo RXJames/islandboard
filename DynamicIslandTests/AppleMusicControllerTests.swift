@@ -1,5 +1,5 @@
 /*
- * Atoll (DynamicIsland)
+ * IslandBoard (DynamicIsland)
  * Copyright (C) 2024-2026 Atoll Contributors
  *
  * This program is free software: you can redistribute it and/or modify
@@ -11,7 +11,7 @@
 import AppKit
 import Combine
 import XCTest
-@testable import Atoll
+@testable import IslandBoard
 
 @MainActor
 final class AppleMusicControllerTests: XCTestCase {

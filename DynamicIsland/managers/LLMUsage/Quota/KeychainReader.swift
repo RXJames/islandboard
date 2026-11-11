@@ -54,7 +54,7 @@ enum KeychainReader {
 
 /// Claude Code uses Apple's `security` tool. Use the same identity for both reads
 /// and writes: updating a file-based Keychain secret resets its partition ACL to
-/// the writer's identity. A native Atoll write otherwise removes `apple-tool:` and
+/// the writer's identity. A native IslandBoard write otherwise removes `apple-tool:` and
 /// makes Claude Code ask for access again at its next read.
 enum ClaudeKeychainStore {
     // SecurityTool's interactive command buffer is 4096 bytes including its NUL.
@@ -114,7 +114,7 @@ enum ClaudeKeychainStore {
             .replacingOccurrences(of: "\"", with: "\\\"") + "\""
     }
 
-    /// Writes and closes stdin without allowing a vanished reader to terminate Atoll.
+    /// Writes and closes stdin without allowing a vanished reader to terminate IslandBoard.
     /// Descriptor-local suppression preserves signal handling elsewhere in the app.
     static func writeInput(_ input: Data, to handle: FileHandle) -> Bool {
         defer { try? handle.close() }

@@ -1,5 +1,5 @@
 /*
- * Atoll (DynamicIsland)
+ * IslandBoard (DynamicIsland)
  * Copyright (C) 2024-2026 Atoll Contributors
  *
  * This program is free software: you can redistribute it and/or modify
@@ -599,14 +599,14 @@ final class LocalSendService: NSObject, ObservableObject {
 
     private func sendAnnouncement() {
         let payload: [String: Any] = [
-            "alias": Host.current().localizedName ?? "Atoll",
+            "alias": Host.current().localizedName ?? "IslandBoard",
             "version": "2.1",
             "deviceModel": "Mac",
             "deviceType": "desktop",
             "fingerprint": "atoll.localsend.bridge",
             "port": defaultPort,
             // Use HTTP here so LocalSend peers can quickly fail over to UDP response
-            // when Atoll is not serving LocalSend register endpoint.
+            // when IslandBoard is not serving LocalSend register endpoint.
             "protocol": "http",
             "download": false,
             "announcement": true,
@@ -726,7 +726,7 @@ final class LocalSendService: NSObject, ObservableObject {
             }
 
             let responseJSON: [String: Any] = [
-                "alias": Host.current().localizedName ?? "Atoll",
+                "alias": Host.current().localizedName ?? "IslandBoard",
                 "version": "2.1",
                 "deviceModel": "Mac",
                 "deviceType": "desktop",
@@ -740,7 +740,7 @@ final class LocalSendService: NSObject, ObservableObject {
 
         if method == "GET", path == "/api/localsend/v2/info" {
             let responseJSON: [String: Any] = [
-                "alias": Host.current().localizedName ?? "Atoll",
+                "alias": Host.current().localizedName ?? "IslandBoard",
                 "version": "2.1",
                 "deviceModel": "Mac",
                 "deviceType": "desktop",
@@ -887,7 +887,7 @@ final class LocalSendService: NSObject, ObservableObject {
 
         let payload: [String: Any] = [
             "info": [
-                "alias": Host.current().localizedName ?? "Atoll",
+                "alias": Host.current().localizedName ?? "IslandBoard",
                 "version": "2.1",
                 "deviceModel": "Mac",
                 "deviceType": "desktop",

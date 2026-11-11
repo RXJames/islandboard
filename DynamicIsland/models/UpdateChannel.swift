@@ -1,5 +1,5 @@
 /*
- * Atoll (DynamicIsland)
+ * IslandBoard (DynamicIsland)
  * Copyright (C) 2024-2026 Atoll Contributors
  *
  * This program is free software: you can redistribute it and/or modify
@@ -50,7 +50,7 @@ enum UpdateChannel: String, CaseIterable, Identifiable, Codable, Defaults.Serial
     }
 
     var feedURL: URL {
-        let base = "https://raw.githubusercontent.com/Ebullioscopic/Atoll/main/Updates"
+        let base = "https://raw.githubusercontent.com/RXJames/islandboard/main/Updates"
         switch self {
         case .stable:  return URL(string: "\(base)/appcast.xml")!
         case .beta:    return URL(string: "\(base)/appcast-beta.xml")!

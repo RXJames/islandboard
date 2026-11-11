@@ -1,5 +1,5 @@
 /*
- * Atoll (DynamicIsland)
+ * IslandBoard (DynamicIsland)
  * Copyright (C) 2024-2026 Atoll Contributors
  *
  * This program is free software: you can redistribute it and/or modify
@@ -50,6 +50,23 @@ class IdleAnimationManager {
         
         // Get existing animations
         var existing = Defaults[.customIdleAnimations]
+
+        // Built-in animations are stored as absolute file URLs. Moving the
+        // app (DerivedData → /Applications, a rebuild into another build
+        // directory, a reinstall) leaves those URLs dangling: the names stay
+        // in Settings while every preview is blank and the pet never appears
+        // in the notch. Re-point them at the current bundle on every launch.
+        let bundledByName = Dictionary(animations.map { ($0.name, $0) },
+                                       uniquingKeysWith: { first, _ in first })
+        for index in existing.indices where existing[index].isBuiltIn {
+            guard let fresh = bundledByName[existing[index].name] else { continue }
+            if case .lottieFile(let oldURL) = existing[index].source,
+               case .lottieFile(let newURL) = fresh.source,
+               oldURL != newURL {
+                existing[index].source = .lottieFile(newURL)
+                print("🔧 [IdleAnimationManager] Refreshed built-in URL: \(existing[index].name)")
+            }
+        }
         
         // Remove any legacy builtInFace entries that may be stored from older versions
         existing.removeAll { animation in
@@ -78,6 +95,18 @@ class IdleAnimationManager {
             
             Defaults[.customIdleAnimations] = existing
             
+            // Keep the selected built-in pointing at the current bundle too.
+            if let selected = Defaults[.selectedIdleAnimation], selected.isBuiltIn,
+               let fresh = bundledByName[selected.name],
+               case .lottieFile(let oldURL) = selected.source,
+               case .lottieFile(let newURL) = fresh.source,
+               oldURL != newURL {
+                var updated = selected
+                updated.source = .lottieFile(newURL)
+                Defaults[.selectedIdleAnimation] = updated
+                print("🔧 [IdleAnimationManager] Refreshed selected URL: \(selected.name)")
+            }
+
             // If current selection was the old built-in face (no longer valid), select first available
             if let selected = Defaults[.selectedIdleAnimation] {
                 let isValid: Bool
@@ -86,6 +115,8 @@ class IdleAnimationManager {
                     isValid = url.absoluteString != "builtin://face"
                 case .lottieURL:
                     isValid = true
+                case .codexPet(let directory):
+                    isValid = FileManager.default.fileExists(atPath: directory.path)
                 }
                 if !isValid {
                     Defaults[.selectedIdleAnimation] = existing.first
@@ -94,6 +125,51 @@ class IdleAnimationManager {
             }
             
             print("✅ [IdleAnimationManager] Subsequent launch: \(existing.count) total animations")
+        }
+
+        syncCodexPets()
+    }
+
+    /// Codex/petdex pets live outside the app (`~/.codex/pets/<slug>`), so
+    /// they are discovered on every launch: new ones are appended, renames
+    /// are picked up and uninstalled ones are dropped.
+    private func syncCodexPets() {
+        let pets = CodexPet.discover()
+        let original = Defaults[.customIdleAnimations]
+        var animations = original
+        let directories = Set(pets.map { $0.directory.standardizedFileURL })
+
+        animations.removeAll { animation in
+            guard case .codexPet(let directory) = animation.source else { return false }
+            return !directories.contains(directory.standardizedFileURL)
+        }
+        for pet in pets {
+            if let index = animations.firstIndex(where: { animation in
+                if case .codexPet(let directory) = animation.source {
+                    return directory.standardizedFileURL == pet.directory.standardizedFileURL
+                }
+                return false
+            }) {
+                if animations[index].name != pet.displayName {
+                    animations[index].name = pet.displayName
+                }
+            } else {
+                animations.append(CustomIdleAnimation(name: pet.displayName,
+                                                      source: .codexPet(pet.directory),
+                                                      speed: 1.0,
+                                                      isBuiltIn: false))
+            }
+        }
+
+        if animations != original {
+            Defaults[.customIdleAnimations] = animations
+            print("🐾 [IdleAnimationManager] Codex pets synced: \(pets.count)")
+        }
+
+        if let selected = Defaults[.selectedIdleAnimation],
+           case .codexPet(let directory) = selected.source,
+           !directories.contains(directory.standardizedFileURL) {
+            Defaults[.selectedIdleAnimation] = animations.first
         }
     }
     

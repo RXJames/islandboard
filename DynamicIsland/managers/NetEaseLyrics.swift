@@ -1,5 +1,5 @@
 /*
- * Atoll (DynamicIsland)
+ * IslandBoard (DynamicIsland)
  * Copyright (C) 2024-2026 Atoll Contributors
  *
  * This program is free software: you can redistribute it and/or modify
@@ -36,6 +36,27 @@ enum NetEaseLyrics {
     /// publish, so an exact comparison would reject the right song.
     static let durationTolerance: TimeInterval = 2
 
+    /// NetEase's web endpoints use cookies/caches to personalise results, and
+    /// `URLSession.shared` can then answer the same search URL with an
+    /// unrelated result set. Lyrics lookups need the plain, canonical search
+    /// response, so keep them on an isolated session with no cookies, no cache
+    /// and a browser-like user agent.
+    static let session: URLSession = {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.httpCookieStorage = nil
+        configuration.httpCookieAcceptPolicy = .never
+        configuration.httpShouldSetCookies = false
+        configuration.urlCache = nil
+        configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
+        configuration.timeoutIntervalForRequest = 10
+        configuration.httpAdditionalHeaders = [
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15",
+            "Accept": "application/json, text/plain, */*",
+            "Referer": "https://music.163.com/"
+        ]
+        return URLSession(configuration: configuration)
+    }()
+
     /// Returns lyrics or an explicit instrumental/unavailable result for the
     /// closest matching track. Throws only on transport
     /// failure, so the caller can tell "nothing there" from "could not ask".
@@ -43,7 +64,7 @@ enum NetEaseLyrics {
         title: String,
         artist: String,
         duration: TimeInterval,
-        session: URLSession = .shared
+        session: URLSession = NetEaseLyrics.session
     ) async throws -> LyricsResolution {
         guard let searchURL = searchURL(title: title, artist: artist) else { return LyricsResolution() }
 
@@ -92,7 +113,10 @@ enum NetEaseLyrics {
         guard !query.isEmpty,
               let encoded = query.addingPercentEncoding(withAllowedCharacters: queryValueAllowed)
         else { return nil }
-        return URL(string: "https://music.163.com/api/search/get/web?s=\(encoded)&type=1&limit=10")
+        // `/api/search/get/web` now returns `{"result":"<encrypted hex>"}`;
+        // the plain endpoint still returns the documented songs JSON. Keep the
+        // path without `/web` until NetEase changes it too.
+        return URL(string: "https://music.163.com/api/search/get?s=\(encoded)&type=1&limit=10")
     }
 
     static func lyricURL(songID: Int) -> URL? {

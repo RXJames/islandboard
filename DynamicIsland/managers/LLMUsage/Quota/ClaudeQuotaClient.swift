@@ -54,7 +54,7 @@ struct ClaudeQuotaClient {
         }
 
         /// The same credential carrying a new token pair, with `raw` edited to match so the
-        /// fields Atoll does not use survive the write-back.
+        /// fields IslandBoard does not use survive the write-back.
         func rotated(accessToken: String, refreshToken: String, expiresAt: Int64) -> Credentials? {
             guard var obj = try? JSONSerialization.jsonObject(with: raw) as? [String: Any],
                   var oauth = obj["claudeAiOauth"] as? [String: Any] else { return nil }
@@ -184,7 +184,7 @@ struct ClaudeQuotaClient {
 
     /// Stores a rotated pair where the credential was read from. The refresh that produced
     /// it invalidated the previous pair, so without this the source keeps a dead refresh
-    /// token: the next Atoll launch cannot refresh, and neither can Claude Code, which is
+    /// token: the next IslandBoard launch cannot refresh, and neither can Claude Code, which is
     /// then logged out. Best-effort — the in-memory copy carries this process either way.
     private static func writeBack(_ creds: Credentials) {
         switch creds.source {

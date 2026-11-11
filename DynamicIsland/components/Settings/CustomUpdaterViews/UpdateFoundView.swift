@@ -1,5 +1,5 @@
 /*
- * Atoll (DynamicIsland)
+ * IslandBoard (DynamicIsland)
  * Copyright (C) 2024-2026 Atoll Contributors
  *
  * This program is free software: you can redistribute it and/or modify
@@ -65,7 +65,7 @@ struct UpdateFoundView: View {
                 }
 
                 // Title
-                Text("A new version of Atoll is available!")
+                Text("A new version of IslandBoard is available!")
                     .font(.headline)
                     .multilineTextAlignment(.center)
 

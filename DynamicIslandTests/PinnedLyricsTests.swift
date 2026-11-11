@@ -1,5 +1,5 @@
 /*
- * Atoll (DynamicIsland)
+ * IslandBoard (DynamicIsland)
  * Copyright (C) 2024-2026 Atoll Contributors
  *
  * This program is free software: you can redistribute it and/or modify
@@ -18,7 +18,7 @@
 
 import XCTest
 import Defaults
-@testable import Atoll
+@testable import IslandBoard
 
 final class PinnedLyricsContextTests: XCTestCase {
     private let lines = LRCParser.parse("""

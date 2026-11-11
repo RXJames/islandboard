@@ -1,5 +1,5 @@
 /*
- * Atoll (DynamicIsland)
+ * IslandBoard (DynamicIsland)
  * Copyright (C) 2024-2026 Atoll Contributors
  *
  * Swift bridge to the Rust usage core (see atoll-core/). File scanning, streaming
@@ -68,13 +68,13 @@ enum UsageCore {
                                   todayStart.timeIntervalSince1970,
                                   todayEnd.timeIntervalSince1970)
         }) else {
-            throw CoreError(message: "Atoll usage core failed")
+            throw CoreError(message: "IslandBoard usage core failed")
         }
         defer { atoll_free_string(raw) }
 
         let payload = String(cString: raw).data(using: .utf8) ?? Data()
         guard let core = try? JSONDecoder().decode(CoreSnapshot.self, from: payload) else {
-            throw CoreError(message: "Atoll usage core returned an invalid payload")
+            throw CoreError(message: "IslandBoard usage core returned an invalid payload")
         }
 
         snapshot.week = totals(for: core.week)

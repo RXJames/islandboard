@@ -1,9 +1,9 @@
 /*
- * Atoll (DynamicIsland)
+ * IslandBoard (DynamicIsland)
  * Copyright (C) 2024-2026 Atoll Contributors
  *
  * Originally from boring.notch project
- * Modified and adapted for Atoll (DynamicIsland)
+ * Modified and adapted for IslandBoard (DynamicIsland)
  * See NOTICE for details.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -52,7 +52,9 @@ struct TabEnablement {
     var shelf: Bool
     var timer: Bool
     var stats: Bool
+    var monitor: Bool
     var usage: Bool
+    var controlCenter: Bool
     var notes: Bool
     var terminal: Bool
 
@@ -61,11 +63,14 @@ struct TabEnablement {
             homeVisible: Defaults[.enableMinimalisticUI]
                 || Defaults[.showStandardMediaControls]
                 || Defaults[.showCalendar]
-                || Defaults[.showMirror],
+                || Defaults[.showMirror]
+                || Defaults[.enableHomeWeather],
             shelf: Defaults[.dynamicShelf],
             timer: Defaults[.enableTimerFeature] && Defaults[.timerDisplayMode] == .tab,
             stats: Defaults[.enableStatsFeature],
+            monitor: Defaults[.enableSystemMonitorTab],
             usage: Defaults[.enableLLMUsageFeature],
+            controlCenter: Defaults[.enableControlCenterTab],
             notes: Defaults[.enableNotes]
                 || (Defaults[.enableClipboardManager] && Defaults[.clipboardDisplayMode] == .separateTab),
             terminal: Defaults[.enableTerminalFeature]
@@ -115,8 +120,14 @@ enum TabCatalog {
         if enablement.stats {
             tabsArray.append(TabModel(label: "Stats", icon: "chart.xyaxis.line", view: .stats))
         }
+        if enablement.monitor {
+            tabsArray.append(TabModel(label: "Monitor", icon: "speedometer", view: .monitor))
+        }
         if enablement.usage {
             tabsArray.append(TabModel(label: "Usage", icon: "chart.bar.doc.horizontal", view: .llmUsage))
+        }
+        if enablement.controlCenter {
+            tabsArray.append(TabModel(label: "Control Center", icon: "switch.2", view: .controlCenter))
         }
         if enablement.notes {
             let label = Defaults[.enableNotes] ? "Notes" : "Clipboard"
@@ -195,6 +206,8 @@ struct TabSelectionView: View {
     @Default(.showStandardMediaControls) private var showStandardMediaControls
     @Default(.enableMinimalisticUI) private var enableMinimalisticUI
     @Default(.tabOrder) private var tabOrder
+    @Default(.enableControlCenterTab) var enableControlCenterTab
+    @Default(.enableSystemMonitorTab) private var enableSystemMonitorTab
     @Namespace var animation
 
     private var tabs: [TabModel] {
@@ -205,7 +218,9 @@ struct TabSelectionView: View {
             shelf: Defaults[.dynamicShelf],
             timer: enableTimerFeature && timerDisplayMode == .tab,
             stats: Defaults[.enableStatsFeature],
+            monitor: enableSystemMonitorTab,
             usage: Defaults[.enableLLMUsageFeature],
+            controlCenter: enableControlCenterTab,
             notes: Defaults[.enableNotes]
                 || (Defaults[.enableClipboardManager] && Defaults[.clipboardDisplayMode] == .separateTab),
             terminal: Defaults[.enableTerminalFeature]
@@ -354,7 +369,7 @@ struct TabSelectionView: View {
         if enableMinimalisticUI {
             return true
         }
-        return showStandardMediaControls || showCalendar || showMirror
+        return showStandardMediaControls || showCalendar || showMirror || Defaults[.enableHomeWeather]
     }
 
     private func isSelected(_ tab: TabModel) -> Bool {

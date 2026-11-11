@@ -1,9 +1,9 @@
 /*
- * Atoll (DynamicIsland)
+ * IslandBoard (DynamicIsland)
  * Copyright (C) 2024-2026 Atoll Contributors
  *
  * Originally from boring.notch project
- * Modified and adapted for Atoll (DynamicIsland)
+ * Modified and adapted for IslandBoard (DynamicIsland)
  * See NOTICE for details.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -852,6 +852,8 @@ class MusicManager: ObservableObject {
             newController = TidalController()
         case .cider:
             newController = CiderController()
+        case .neteaseMusic:
+            newController = NetEaseMusicController()
         }
 
         // Set up state observation for the new controller
@@ -2271,6 +2273,8 @@ extension MusicManager {
             return amazonOrange
         case .tidal, .cider:
             return .accentColor
+        case .neteaseMusic:
+            return neteaseRed
         case .nowPlaying:
             if let bundleIdentifier,
                let bundleColor = brandAccentColor(forBundleIdentifier: bundleIdentifier) {
@@ -2294,6 +2298,8 @@ extension MusicManager {
             return .accentColor
         case CiderController.bundleIdentifier:
             return .accentColor
+        case NetEaseMusicController.bundleIdentifier:
+            return neteaseRed
         default:
             return nil
         }
@@ -2302,6 +2308,7 @@ extension MusicManager {
     private static let appleMusicPink = Color(red: 0.999, green: 0.171, blue: 0.331)
     private static let spotifyGreen = Color(red: 0.0, green: 0.857, blue: 0.302)
     private static let amazonOrange = Color(red: 1.0, green: 0.6, blue: 0.0)
+    private static let neteaseRed = Color(red: 0.80, green: 0.06, blue: 0.07)
 }
 
 // MARK: - Album Art Flip Helper

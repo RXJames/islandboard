@@ -55,6 +55,7 @@ private enum SettingsTab: String, CaseIterable, Identifiable {
     case extensions
     case timer
     case calendar
+    case weather
     case hudAndOSD
     case battery
     case stats
@@ -74,7 +75,7 @@ private enum SettingsTab: String, CaseIterable, Identifiable {
     var group: SettingsTabGroup {
         switch self {
         case .general, .appearance:                                          return .core
-        case .media, .liveActivities, .lockScreen, .devices:                 return .mediaAndDisplay
+        case .media, .liveActivities, .lockScreen, .weather, .devices:       return .mediaAndDisplay
         case .hudAndOSD, .battery:                                           return .system
         case .timer, .calendar, .notes:                                      return .productivity
         case .clipboard, .screenAssistant, .colorPicker, .shelf,
@@ -96,6 +97,7 @@ private enum SettingsTab: String, CaseIterable, Identifiable {
         case .extensions: return String(localized: "Extensions")
         case .timer: return String(localized: "Timer")
         case .calendar: return String(localized: "Calendar")
+        case .weather: return String(localized: "Weather")
         case .hudAndOSD: return String(localized: "Controls")
         case .battery: return String(localized: "Battery")
         case .stats: return String(localized: "Stats")
@@ -122,6 +124,7 @@ private enum SettingsTab: String, CaseIterable, Identifiable {
         case .extensions: return "puzzlepiece.extension"
         case .timer: return "timer"
         case .calendar: return "calendar"
+        case .weather: return "cloud.sun.fill"
         case .hudAndOSD: return "dial.medium.fill"
         case .battery: return "battery.100.bolt"
         case .stats: return "chart.xyaxis.line"
@@ -148,6 +151,7 @@ private enum SettingsTab: String, CaseIterable, Identifiable {
         case .extensions: return Color(red: 0.557, green: 0.353, blue: 0.957)
         case .timer: return .red
         case .calendar: return .cyan
+        case .weather: return .blue
         case .hudAndOSD: return .indigo
         case .battery: return Color(red: 0.202, green: 0.783, blue: 0.348, opacity: 1.000)
         case .stats: return .teal
@@ -329,6 +333,11 @@ private enum SettingsSearchIndex {
         SettingsSearchEntry(tab: .media, title: "Show Change Media Output control", keywords: ["airplay", "route picker", "media output"], highlightID: SettingsTab.media.highlightID(for: "Show Change Media Output control")),
         SettingsSearchEntry(tab: .media, title: "Enable album art parallax", keywords: ["parallax", "lock screen", "album art"], highlightID: SettingsTab.media.highlightID(for: "Enable album art parallax")),
         SettingsSearchEntry(tab: .media, title: "Enable album art parallax effect", keywords: ["parallax", "parallax effect", "album art"], highlightID: SettingsTab.media.highlightID(for: "Enable album art parallax effect")),
+
+        // Weather
+        SettingsSearchEntry(tab: .weather, title: "Show weather on Home", keywords: ["weather", "forecast", "home", "temperature"], highlightID: SettingsTab.weather.highlightID(for: "Show weather on Home")),
+        SettingsSearchEntry(tab: .weather, title: "Weather location", keywords: ["weather", "location", "city", "current location"], highlightID: SettingsTab.weather.highlightID(for: "Weather location")),
+        SettingsSearchEntry(tab: .weather, title: "Weather display", keywords: ["weather", "today", "five days", "forecast"], highlightID: SettingsTab.weather.highlightID(for: "Weather display")),
 
         // Calendar
         SettingsSearchEntry(tab: .calendar, title: "Show calendar", keywords: ["calendar", "events"], highlightID: SettingsTab.calendar.highlightID(for: "Show calendar")),
@@ -691,6 +700,16 @@ struct SettingsView: View {
             }
             .ignoresSafeArea()
         }
+        .onReceive(NotificationCenter.default.publisher(for: .atollOpenWeatherSettings)) { _ in
+            _ = SettingsWindowController.shared.consumePendingWeatherTabRequest()
+            searchText = ""
+            selectedTab = .weather
+        }
+        .onAppear {
+            guard SettingsWindowController.shared.consumePendingWeatherTabRequest() else { return }
+            searchText = ""
+            selectedTab = .weather
+        }
     }
 
     private var resolvedSelection: SettingsTab {
@@ -802,6 +821,7 @@ struct SettingsView: View {
             .media,
             .liveActivities,
             .lockScreen,
+            .weather,
             .devices,
             // System
             .hudAndOSD,
@@ -1057,6 +1077,10 @@ struct SettingsView: View {
         case .calendar:
             SettingsForm(tab: .calendar) {
                 CalendarSettings()
+            }
+        case .weather:
+            SettingsForm(tab: .weather) {
+                WeatherSettings()
             }
         case .hudAndOSD:
             SettingsForm(tab: .hudAndOSD) {
@@ -1920,7 +1944,7 @@ final class HUDPreviewViewModel: ObservableObject {
 ///
 /// Ownership is not the integration toggle on its own. `resolvedControlFlags()`
 /// hands the keys over only while integration is enabled *and* the provider is
-/// running, so quitting the provider gives them back to Atoll -- and a control
+/// running, so quitting the provider gives them back to IslandBoard -- and a control
 /// gated on the toggle alone stays greyed out over a setting that has started
 /// working again.
 ///
@@ -2459,7 +2483,7 @@ private struct ExternalDisplayIntegrationsSection: View {
 
     /// Mirrors `SystemHUDManager.resolvedControlFlags()`: ownership only transfers
     /// while integration is enabled *and* the provider is running. When the
-    /// provider is quit, Atoll handles the keys again and the saved step sizes
+    /// provider is quit, IslandBoard handles the keys again and the saved step sizes
     /// apply, so the controls have to come back with it.
     private var externalOwnsBrightness: Bool {
         enableThirdPartyDDCIntegration && ddcProviderRunning
@@ -2501,21 +2525,21 @@ private struct ExternalDisplayIntegrationsSection: View {
         switch thirdPartyDDCProvider {
         case .betterDisplay:
             if !betterDisplayManager.isDetected {
-                return "Install [BetterDisplay](https://betterdisplay.pro) to control external display brightness (and optional volume) through Atoll's HUD."
+                return "Install [BetterDisplay](https://betterdisplay.pro) to control external display brightness (and optional volume) through IslandBoard's HUD."
             }
             if !ddcProviderRunning {
                 return "BetterDisplay is installed but not currently running. Launch BetterDisplay to enable integration."
             }
-            return "BetterDisplay OSD events will be routed through Atoll's active HUD style. Brightness is always routed; volume is routed when external volume control listener is enabled below. Make sure BetterDisplay's OSD integration is enabled in Settings › Application › Integration."
+            return "BetterDisplay OSD events will be routed through IslandBoard's active HUD style. Brightness is always routed; volume is routed when external volume control listener is enabled below. Make sure BetterDisplay's OSD integration is enabled in Settings › Application › Integration."
         case .lunar:
             if !lunarManager.isDetected {
-                return "Install [Lunar](https://lunar.fyi) to control external display brightness, contrast, and optional volume through Atoll's HUD via DDC."
+                return "Install [Lunar](https://lunar.fyi) to control external display brightness, contrast, and optional volume through IslandBoard's HUD via DDC."
             }
             if !ddcProviderRunning {
                 return "Lunar is installed but not currently running. Launch Lunar to enable integration."
             }
             if lunarManager.isConnected {
-                return "Connected to Lunar's DDC socket. Brightness and contrast adjustments are shown through Atoll's HUD; volume follows when external volume control listener is enabled below."
+                return "Connected to Lunar's DDC socket. Brightness and contrast adjustments are shown through IslandBoard's HUD; volume follows when external volume control listener is enabled below."
             }
             return "Lunar is running but the socket connection is not yet established. It will connect automatically."
         }
@@ -2629,8 +2653,8 @@ private struct ExternalDisplayIntegrationsSection: View {
 
                     Text(
                         enableExternalVolumeControlListener
-                        ? "Atoll's built-in volume key interception is disabled while external volume listening is on. Volume HUD/OSD will follow \(thirdPartyDDCProvider.displayName) payloads."
-                        : "Atoll keeps native volume key interception. External provider volume payloads are ignored while this is off."
+                        ? "IslandBoard's built-in volume key interception is disabled while external volume listening is on. Volume HUD/OSD will follow \(thirdPartyDDCProvider.displayName) payloads."
+                        : "IslandBoard keeps native volume key interception. External provider volume payloads are ignored while this is off."
                     )
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -2655,13 +2679,13 @@ private struct ExternalDisplayIntegrationsSection: View {
                     }
                     .buttonStyle(.link)
                 } else {
-                    Text("Enable to route BetterDisplay or Lunar display adjustments through Atoll's active HUD style.")
+                    Text("Enable to route BetterDisplay or Lunar display adjustments through IslandBoard's active HUD style.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
             } footer: {
                 if enableThirdPartyDDCIntegration {
-                    Text("Atoll always listens to selected-provider brightness events, and listens to provider volume events only when external volume listener is enabled.")
+                    Text("IslandBoard always listens to selected-provider brightness events, and listens to provider volume events only when external volume listener is enabled.")
                         .foregroundStyle(.secondary)
                         .font(.caption)
                 }
@@ -2758,7 +2782,7 @@ private struct DevicesSettingsView: View {
             } header: {
                 Text("App Volume")
             } footer: {
-                Text("Gives each app its own volume and mute, independent of the system volume. macOS will ask for audio recording permission the first time an app's level is changed: routing an app's audio through Atoll is the only way it can be adjusted, and nothing is ever recorded or written to disk. Apps left at 100% and unmuted keep their normal, untouched path to the speakers.")
+                Text("Gives each app its own volume and mute, independent of the system volume. macOS will ask for audio recording permission the first time an app's level is changed: routing an app's audio through IslandBoard is the only way it can be adjusted, and nothing is ever recorded or written to disk. Apps left at 100% and unmuted keep their normal, untouched path to the speakers.")
             }
 
             Section {
@@ -3131,6 +3155,8 @@ private extension MediaControllerType {
             return [TidalController.bundleIdentifier]
         case .cider:
             return ["sh.cider.genten.mac"]
+        case .neteaseMusic:
+            return [NetEaseMusicController.bundleIdentifier]
         }
     }
 
@@ -3143,6 +3169,7 @@ private extension MediaControllerType {
         case .amazonMusic: return "music.note.list"
         case .tidal: return "waveform.path"
         case .cider: return "cup.and.saucer.fill"
+        case .neteaseMusic: return "cloud.fill"
         }
     }
 
@@ -3155,6 +3182,7 @@ private extension MediaControllerType {
         case .amazonMusic: return .cyan
         case .tidal: return .primary
         case .cider: return .orange
+        case .neteaseMusic: return Color(red: 0.80, green: 0.06, blue: 0.07)
         }
     }
 }
@@ -3245,7 +3273,7 @@ struct Media: View {
                 } else {
                     VStack(alignment: .leading, spacing: 6) {
                         Text(String(localized: "'Now Playing' was the only option on previous versions and works with all media apps."))
-                        if mediaController == .amazonMusic || mediaController == .tidal || mediaController == .cider {
+                        if mediaController == .amazonMusic || mediaController == .tidal || mediaController == .cider || mediaController == .neteaseMusic {
                             Text(mediaController.description)
                         }
                     }
@@ -3614,7 +3642,7 @@ struct Media: View {
                     }
                     .disabled(!enableLockScreenMediaWidget || !lockScreenMusicFullscreenArtworkEnabled)
                     .settingsHighlight(id: highlightID("Keep album art visible during fullscreen artwork"))
-                    Text("Right-click the album art on the lock screen to set it as the wallpaper. Right-click again or click the background to restore the original wallpaper. If a canvas is available, Atoll can also keep the same album art + player layout on top of the live canvas.")
+                    Text("Right-click the album art on the lock screen to set it as the wallpaper. Right-click again or click the background to restore the original wallpaper. If a canvas is available, IslandBoard can also keep the same album art + player layout on top of the live canvas.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -3776,6 +3804,7 @@ struct CalendarSettings: View {
                     Text("Show calendar")
                 }
                 .settingsHighlight(id: highlightID("Show calendar"))
+
                 if enableLyrics {
                     Text("Lyrics are on too, so the two share the notch and lyrics drop to a single line under the artist name.")
                         .font(.caption)
@@ -6090,7 +6119,7 @@ struct LockScreenSettings: View {
                         }
                         .disabled(!enableLockScreenMediaWidget || !lockScreenMusicFullscreenArtworkEnabled)
                         .settingsHighlight(id: highlightID("Keep album art visible during fullscreen artwork"))
-                        Text("Right-click the album art on the lock screen to set it as the wallpaper. Right-click again or click the background to restore the original wallpaper. If a canvas is available, Atoll can also keep the same album art + player layout on top of the live canvas.")
+                        Text("Right-click the album art on the lock screen to set it as the wallpaper. Right-click again or click the background to restore the original wallpaper. If a canvas is available, IslandBoard can also keep the same album art + player layout on top of the live canvas.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
@@ -8113,15 +8142,25 @@ struct StatsSettings: View {
                     // Note: Smart monitoring will handle starting when switching to stats tab
                 }
 
+                Defaults.Toggle(key: .enableSystemMonitorTab) {
+                    Text("Enable System Monitor tab")
+                }
+                .settingsHighlight(id: highlightID("Enable System Monitor tab"))
+
                 Defaults.Toggle(key: .enableLLMUsageFeature) {
                     Text("Enable LLM Usage Monitor")
                 }
                 .settingsHighlight(id: highlightID("Enable LLM Usage Monitor"))
 
+                Defaults.Toggle(key: .enableControlCenterTab) {
+                    Text("Enable Control Center tab")
+                }
+                .settingsHighlight(id: highlightID("Enable Control Center tab"))
+
             } header: {
                 Text("General")
             } footer: {
-                Text("When enabled, the Stats tab will display real-time system performance graphs. This feature requires system permissions and may use additional battery. Enabling LLM Usage Monitor adds a Usage tab that tracks token usage and spend across your configured AI providers.")
+                Text("When enabled, the Stats tab will display real-time system performance graphs. This feature requires system permissions and may use additional battery. Enabling LLM Usage Monitor adds a Usage tab that tracks token usage and spend across your configured AI providers. The System Monitor tab shows a live dashboard of CPU, GPU, memory, disk, network, thermal, per-core, load, battery and uptime metrics. The Control Center tab adds editable tiles for Wi-Fi, Focus, Night Shift, Dark Mode, volume, brightness and keyboard light. Click the Focus tile to turn Focus off, or hold it to pick one of your Focus modes; Dark Mode asks for System Events permission once.")
                     .multilineTextAlignment(.trailing)
                     .foregroundStyle(.secondary)
                     .font(.caption)
@@ -8454,7 +8493,7 @@ struct StatsSettings: View {
                 accountPendingDeletion = nil
             }
         } message: { account in
-            Text("This removes \(account.name) and its stored API key from Atoll.")
+            Text("This removes \(account.name) and its stored API key from IslandBoard.")
         }
         .alert("New API Account Error", isPresented: Binding(
             get: { newAPIAccountErrorMessage != nil },
@@ -9398,7 +9437,7 @@ struct NotesSettingsView: View {
                 } header: {
                     Text("Apple Notes")
                 } footer: {
-                    Text("Two-way sync with the macOS Notes app. Notes created in Atoll appear in the Atoll folder in Notes, and your existing Apple Notes are imported into the notch. Grant Automation permission for Notes when prompted.")
+                    Text("Two-way sync with the macOS Notes app. Notes created in IslandBoard appear in the IslandBoard folder in Notes, and your existing Apple Notes are imported into the notch. Grant Automation permission for Notes when prompted.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
