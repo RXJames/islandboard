@@ -1020,7 +1020,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         NotificationCenter.default.addObserver(
             forName: Notification.Name.notchHeightChanged, object: nil, queue: nil
         ) { [weak self] _ in
-            self?.adjustWindowPosition()
+            guard let self else { return }
+            self.adjustWindowPosition()
+            // Width/height changes must update the model size and the actual
+            // hosting window, not just its screen position.
+            self.vm.refreshOpenNotchSizeForCurrentTab()
+            if Defaults[.showOnAllDisplays] {
+                for viewModel in self.viewModels.values {
+                    viewModel.refreshOpenNotchSizeForCurrentTab()
+                }
+            }
         }
 
         NotificationCenter.default.addObserver(

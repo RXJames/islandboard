@@ -244,6 +244,111 @@ final class NewAPIUsageTests: XCTestCase {
         XCTAssertEqual(snapshot.errorMessage, "Balance service unavailable: topped-up users only")
     }
 
+    func testDeepSeekProviderOnlyFetchesDeepSeekAccounts() async throws {
+        let gateway = NewAPIAccount(name: "Gateway", baseURL: "https://gateway.example")
+        let deepSeek = NewAPIAccount(
+            name: "DeepSeek",
+            baseURL: "https://api.deepseek.com",
+            kind: .deepSeek
+        )
+        let source = TestAccountSource(
+            accounts: [gateway, deepSeek],
+            keys: [gateway.id: "gateway-key", deepSeek.id: "sk-deepseek"]
+        )
+        let recorder = RequestRecorder()
+        let client = NewAPIClient { request in
+            recorder.append(request)
+            XCTAssertEqual(request.url?.path, "/user/balance")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer sk-deepseek")
+            let body = #"{"is_available":true,"balance_infos":[{"currency":"CNY","total_balance":"110.00","granted_balance":"10.00","topped_up_balance":"100.00"}]}"#
+            return (
+                Data(body.utf8),
+                HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+            )
+        }
+
+        let provider = DeepSeekUsageProvider(accountSource: source, client: client)
+        let snapshot = try await provider.fetchSnapshot(now: Date(timeIntervalSince1970: 1_700_000_000))
+
+        XCTAssertEqual(provider.id, .deepSeek)
+        XCTAssertEqual(snapshot.newAPIAccounts.map(\.name), ["DeepSeek"])
+        XCTAssertEqual(snapshot.newAPIAccounts.first?.balanceText, "¥110.00")
+        XCTAssertEqual(recorder.requests.count, 1)
+    }
+
+    func testNewAPIProviderCanExcludeDeepSeekAccounts() async throws {
+        let gateway = NewAPIAccount(name: "Gateway", baseURL: "https://gateway.example")
+        let deepSeek = NewAPIAccount(
+            name: "DeepSeek",
+            baseURL: "https://api.deepseek.com",
+            kind: .deepSeek
+        )
+        let source = TestAccountSource(
+            accounts: [gateway, deepSeek],
+            keys: [gateway.id: "gateway-key", deepSeek.id: "sk-deepseek"]
+        )
+        let client = NewAPIClient { request in
+            XCTAssertNotEqual(request.url?.host, "api.deepseek.com")
+            let body = #"{"success":true,"data":{"quota":500,"used_quota":100,"request_count":2}}"#
+            return (
+                Data(body.utf8),
+                HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+            )
+        }
+
+        let provider = NewAPIUsageProvider(
+            accountSource: source,
+            includedKinds: [.newAPI, .server],
+            client: client
+        )
+        let snapshot = try await provider.fetchSnapshot(now: Date())
+
+        XCTAssertEqual(snapshot.newAPIAccounts.map(\.name), ["Gateway"])
+    }
+
+    func testDeepSeekProviderWithoutAccountsUsesDeepSeekMessage() async throws {
+        let provider = DeepSeekUsageProvider(
+            accountSource: TestAccountSource(accounts: [], keys: [:])
+        )
+
+        do {
+            _ = try await provider.fetchSnapshot(now: Date())
+            XCTFail("Expected a notConfigured error")
+        } catch {
+            XCTAssertEqual(error.localizedDescription, "No DeepSeek accounts configured")
+        }
+    }
+
+    func testDeepSeekAIChatEndpointNormalization() {
+        XCTAssertEqual(
+            ScreenAssistantManager.deepSeekChatCompletionsURL("https://api.deepseek.com")?.absoluteString,
+            "https://api.deepseek.com/chat/completions"
+        )
+        XCTAssertEqual(
+            ScreenAssistantManager.deepSeekChatCompletionsURL("https://api.deepseek.com/")?.absoluteString,
+            "https://api.deepseek.com/chat/completions"
+        )
+        XCTAssertEqual(
+            ScreenAssistantManager.deepSeekChatCompletionsURL("https://api.deepseek.com/v1")?.absoluteString,
+            "https://api.deepseek.com/v1/chat/completions"
+        )
+        XCTAssertEqual(
+            ScreenAssistantManager.deepSeekChatCompletionsURL("https://api.deepseek.com/v1/chat/completions")?.absoluteString,
+            "https://api.deepseek.com/v1/chat/completions"
+        )
+        XCTAssertNil(ScreenAssistantManager.deepSeekChatCompletionsURL(""))
+        XCTAssertNil(ScreenAssistantManager.deepSeekChatCompletionsURL("not-a-url"))
+        XCTAssertNil(ScreenAssistantManager.deepSeekChatCompletionsURL("ftp://api.deepseek.com"))
+    }
+
+    func testDeepSeekAIProviderModels() {
+        XCTAssertEqual(
+            AIModelProvider.deepSeek.supportedModels.map(\.id),
+            ["deepseek-chat", "deepseek-reasoner"]
+        )
+        XCTAssertTrue(AIModelProvider.deepSeek.supportedModels.contains { $0.supportsThinking })
+    }
+
     func testLegacyStoredAccountWithoutKindDecodesAsGateway() throws {
         // Rows persisted before DeepSeek support must keep speaking the gateway dialect.
         let json = #"{"id":"3411D0CB-9CAE-4C23-87C8-F3D44AC8A08A","name":"DS","baseURL":"https://api.deepseek.com"}"#

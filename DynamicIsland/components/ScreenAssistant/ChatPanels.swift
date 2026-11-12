@@ -449,6 +449,7 @@ struct ChatInputView: View {
         case .gemini: return "sparkles"
         case .openai: return "brain.head.profile"
         case .claude: return "doc.text"
+        case .deepSeek: return "waveform.path.ecg"
         case .local: return "server.rack"
         case .groq: return "bolt.fill"
         }
@@ -470,6 +471,8 @@ struct ChatInputView: View {
             apiKey = Defaults[.openaiApiKey]
         case .claude:
             apiKey = Defaults[.claudeApiKey]
+        case .deepSeek:
+            apiKey = Defaults[.deepSeekApiKey]
         case .local:
             // Local models don't need API keys
             apiKey = "local"

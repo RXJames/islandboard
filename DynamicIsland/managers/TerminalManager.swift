@@ -677,13 +677,6 @@ class TerminalManager: ObservableObject {
         _ = window.makeFirstResponder(nil)
     }
 
-    /// True when the terminal view is currently first responder.
-    func isTerminalFirstResponder() -> Bool {
-        guard let view = terminalView else { return false }
-        guard let window = containerView.window ?? view.window else { return false }
-        return window.firstResponder === view
-    }
-
     /// Updates cursor color on the live terminal view.
     func applyCursorColor(_ color: SwiftUI.Color) {
         guard let view = terminalView else { return }

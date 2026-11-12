@@ -379,7 +379,7 @@ struct ExtensionProgressIndicatorView: View {
                     .animation(.smooth(duration: 0.25), value: progress)
             }
             .frame(width: resolvedDiameter, height: resolvedDiameter)
-        case let .bar(width, height, cornerRadius, color):
+        case let .bar(width, height, _, color):
             let barColor = color?.resolvedColor(fallback: accent) ?? accent
             Capsule()
                 .fill(Color.white.opacity(0.18))

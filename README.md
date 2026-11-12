@@ -74,7 +74,7 @@ feed. All original work remains © the Atoll Contributors — see
 
 - Shelf with AirDrop, Quick Share and LocalSend, plus thumbnail and Quick Look previews.
 - Clipboard history, colour picker, timers with live activities and a downloads manager.
-- AI screen assistant for capturing a region and chatting about it.
+- AI Assistant for capturing a region and chatting about it, with configurable Gemini, OpenAI, Claude, DeepSeek, Groq, and local providers.
 - Apple Notes two-way sync, LLM usage tracking for Claude Code and Codex, and `caffeinate` toggles.
 
 **Extensions**
@@ -221,7 +221,9 @@ islandboard/
 
 Issues and pull requests are welcome. Please read
 [CONTRIBUTING.md](CONTRIBUTING.md) first — it covers the build setup, code style and
-the test suites (`cargo test` for the core, ⌘U in Xcode for the app).
+the test suites (`cargo test` for the core, ⌘U in Xcode for the app). Use
+[TESTING.md](TESTING.md) for the automated commands and the pre-release notch/UI
+checklist.
 
 Since IslandBoard is a fork, please report bugs here rather than upstream, and keep
 the GPL attribution headers intact in new files.

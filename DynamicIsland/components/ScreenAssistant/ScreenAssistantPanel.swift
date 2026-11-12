@@ -98,7 +98,7 @@ struct ScreenAssistantPanelView: View {
     
     var body: some View {
         VStack {
-            Text("Screen Assistant")
+            Text("AI Assistant")
                 .onAppear {
                     // Redirect to new panel system
                     ScreenAssistantManager.shared.showPanels()

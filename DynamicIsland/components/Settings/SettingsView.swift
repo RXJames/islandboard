@@ -102,7 +102,7 @@ private enum SettingsTab: String, CaseIterable, Identifiable {
         case .battery: return String(localized: "Battery")
         case .stats: return String(localized: "Stats")
         case .clipboard: return String(localized: "Clipboard")
-        case .screenAssistant: return String(localized: "Screen Assistant")
+        case .screenAssistant: return String(localized: "AI Assistant")
         case .colorPicker: return String(localized: "Color Picker")
         case .downloads: return String(localized: "Downloads")
         case .shelf: return String(localized: "Shelf")
@@ -374,6 +374,7 @@ private enum SettingsSearchIndex {
         SettingsSearchEntry(tab: .appearance, title: "Corner radius scaling", keywords: ["corner radius", "shape"], highlightID: SettingsTab.appearance.highlightID(for: "Corner radius scaling")),
         SettingsSearchEntry(tab: .appearance, title: "Use simpler close animation", keywords: ["close animation", "notch"], highlightID: SettingsTab.appearance.highlightID(for: "Use simpler close animation")),
         SettingsSearchEntry(tab: .appearance, title: "Notch Width", keywords: ["expanded notch", "width", "resize"], highlightID: SettingsTab.appearance.highlightID(for: "Expanded notch width")),
+        SettingsSearchEntry(tab: .appearance, title: "Expanded notch height", keywords: ["expanded notch", "height", "resize"], highlightID: SettingsTab.appearance.highlightID(for: "Expanded notch height")),
         SettingsSearchEntry(tab: .appearance, title: "Enable colored spectrograms", keywords: ["spectrogram", "audio"], highlightID: SettingsTab.appearance.highlightID(for: "Enable colored spectrograms")),
         SettingsSearchEntry(tab: .appearance, title: "Enable blur effect behind album art", keywords: ["blur", "album art"], highlightID: SettingsTab.appearance.highlightID(for: "Enable blur effect behind album art")),
         SettingsSearchEntry(tab: .appearance, title: "Slider color", keywords: ["slider", "accent"], highlightID: SettingsTab.appearance.highlightID(for: "Slider color")),
@@ -448,6 +449,7 @@ private enum SettingsSearchIndex {
         SettingsSearchEntry(tab: .stats, title: "Codex Provider", keywords: ["llm", "codex", "provider", "toggle"], highlightID: SettingsTab.stats.highlightID(for: "Codex Provider")),
         SettingsSearchEntry(tab: .stats, title: "Cursor Provider", keywords: ["llm", "cursor", "provider", "toggle"], highlightID: SettingsTab.stats.highlightID(for: "Cursor Provider")),
         SettingsSearchEntry(tab: .stats, title: "Antigravity Provider", keywords: ["llm", "antigravity", "provider", "toggle"], highlightID: SettingsTab.stats.highlightID(for: "Antigravity Provider")),
+        SettingsSearchEntry(tab: .stats, title: "DeepSeek Provider", keywords: ["llm", "deepseek", "deep seek", "provider", "toggle"], highlightID: SettingsTab.stats.highlightID(for: "DeepSeek Provider")),
         SettingsSearchEntry(tab: .stats, title: "New API Provider", keywords: ["llm", "new api", "newapi", "provider", "toggle"], highlightID: SettingsTab.stats.highlightID(for: "New API Provider")),
         SettingsSearchEntry(tab: .stats, title: "New API Accounts", keywords: ["llm", "new api", "newapi", "accounts", "key", "token"], highlightID: SettingsTab.stats.highlightID(for: "New API Accounts")),
         SettingsSearchEntry(tab: .stats, title: "Stop monitoring after closing the notch", keywords: ["stats", "auto stop"], highlightID: SettingsTab.stats.highlightID(for: "Stop monitoring after closing the notch")),
@@ -466,7 +468,8 @@ private enum SettingsSearchIndex {
         SettingsSearchEntry(tab: .clipboard, title: "History Size", keywords: ["history", "clipboard"], highlightID: SettingsTab.clipboard.highlightID(for: "History Size")),
 
         // Screen Assistant
-        SettingsSearchEntry(tab: .screenAssistant, title: "Enable Screen Assistant", keywords: ["screen assistant", "ai"], highlightID: SettingsTab.screenAssistant.highlightID(for: "Enable Screen Assistant")),
+        SettingsSearchEntry(tab: .screenAssistant, title: "Enable AI Assistant", keywords: ["screen assistant", "ai assistant", "ai"], highlightID: SettingsTab.screenAssistant.highlightID(for: "Enable AI Assistant")),
+        SettingsSearchEntry(tab: .screenAssistant, title: "Add Provider", keywords: ["ai", "provider", "gemini", "openai", "claude", "groq", "local", "api key"], highlightID: SettingsTab.screenAssistant.highlightID(for: "Add Provider")),
         SettingsSearchEntry(tab: .screenAssistant, title: "Display Mode", keywords: ["screen assistant", "mode"], highlightID: SettingsTab.screenAssistant.highlightID(for: "Display Mode")),
 
         // Color Picker
@@ -4917,6 +4920,7 @@ struct Appearance: View {
     @Default(.customAppIcons) private var customAppIcons
     @Default(.selectedAppIconID) private var selectedAppIconID
     @Default(.openNotchWidth) var openNotchWidth
+    @Default(.openNotchHeight) var openNotchHeight
     @Default(.closedNotchWidth) var closedNotchWidth
     @Default(.customizePhysicalNotchWidth) var customizePhysicalNotchWidth
     @Default(.enableMinimalisticUI) var enableMinimalisticUI
@@ -5460,7 +5464,6 @@ struct Appearance: View {
             let dynamicRange = Double(recommendedMin)...900
             
             let closedRange = Double(80)...400
-            let minimalisticRange = Double(250)...600
 
             let widthBinding = Binding<Double>(
                 get: { Double(openNotchWidth) },
@@ -5525,11 +5528,39 @@ struct Appearance: View {
                 .disabled(enableMinimalisticUI)
                 .settingsHighlight(id: highlightID("Expanded notch width"))
 
+                let heightRange = Double(minExpandedNotchHeight)...Double(maxExpandedNotchHeight)
+                let heightBinding = Binding<Double>(
+                    get: { Double(openNotchHeight) },
+                    set: { newValue in
+                        let clamped = min(max(newValue, heightRange.lowerBound), heightRange.upperBound)
+                        let value = CGFloat(clamped)
+                        if openNotchHeight != value {
+                            openNotchHeight = value
+                        }
+                    }
+                )
+
+                Slider(value: heightBinding, in: heightRange, step: 10) {
+                    HStack {
+                        Text("Expanded notch height")
+                        Spacer()
+                        Text("\(Int(openNotchHeight)) px")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .disabled(enableMinimalisticUI)
+                .settingsHighlight(id: highlightID("Expanded notch height"))
+
                 HStack {
                     Text("\(tabCount) tab\(tabCount == 1 ? "" : "s") enabled · min \(Int(recommendedMin)) px")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     Spacer()
+                    Button("Reset Height") {
+                        openNotchHeight = 200
+                    }
+                    .disabled(abs(openNotchHeight - 200) < 0.5)
+                    .buttonStyle(.bordered)
                     Button("Reset Width") {
                         openNotchWidth = recommendedMin
                     }
@@ -5550,9 +5581,15 @@ struct Appearance: View {
             }
         } header: {
             HStack {
-                Text("Notch Width")
+                Text("Notch Size")
                 customBadge(text: "Beta")
             }
+        }
+        .onChange(of: openNotchWidth) { _, _ in
+            NotificationCenter.default.post(name: Notification.Name.notchHeightChanged, object: nil)
+        }
+        .onChange(of: openNotchHeight) { _, _ in
+            NotificationCenter.default.post(name: Notification.Name.notchHeightChanged, object: nil)
         }
     }
 
@@ -7347,10 +7384,10 @@ struct Shortcuts: View {
                 Section {
                     HStack {
                         VStack(alignment: .leading) {
-                            KeyboardShortcuts.Recorder("Screen Assistant:", name: .screenAssistantPanel)
+                            KeyboardShortcuts.Recorder("AI Assistant:", name: .screenAssistantPanel)
                                 .disabled(!enableShortcuts || !Defaults[.enableScreenAssistant])
                             if !Defaults[.enableScreenAssistant] {
-                                Text("Screen Assistant feature is disabled")
+                                Text("AI Assistant feature is disabled")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                                     .padding(.top, 2)
@@ -7361,7 +7398,7 @@ struct Shortcuts: View {
                 } header: {
                     Text("AI Assistant")
                 } footer: {
-                    Text("Opens the AI assistant panel for file analysis and conversation. Default is Cmd+Shift+A. Only works when screen assistant feature is enabled.")
+                    Text("Opens the AI Assistant panel for file analysis and conversation. Default is Cmd+Shift+A. Only works when the AI Assistant feature is enabled.")
                         .multilineTextAlignment(.trailing)
                         .foregroundStyle(.secondary)
                         .font(.caption)
@@ -8090,6 +8127,7 @@ struct StatsSettings: View {
     @ObservedObject var statsManager = StatsManager.shared
     @Default(.enableStatsFeature) var enableStatsFeature
     @Default(.enableLLMUsageFeature) var enableLLMUsageFeature
+    @Default(.enableDeepSeekProvider) var enableDeepSeekProvider
     @Default(.enableNewAPIProvider) var enableNewAPIProvider
     @Default(.statsStopWhenNotchCloses) var statsStopWhenNotchCloses
     @Default(.statsUpdateInterval) var statsUpdateInterval
@@ -8102,11 +8140,24 @@ struct StatsSettings: View {
     @State private var newAPIAccounts = Defaults[.newAPIAccounts]
     @State private var isNewAPIEditorPresented = false
     @State private var editingNewAPIAccount: NewAPIAccount?
+    @State private var newAPIEditorDefaultKind: NewAPIKind = .newAPI
     @State private var accountPendingDeletion: NewAPIAccount?
     @State private var newAPIAccountErrorMessage: String?
 
     private func highlightID(_ title: String) -> String {
         SettingsTab.stats.highlightID(for: title)
+    }
+
+    private func presentDeepSeekEditor() {
+        newAPIEditorDefaultKind = .deepSeek
+        editingNewAPIAccount = newAPIAccounts.first { $0.kind == .deepSeek }
+        isNewAPIEditorPresented = true
+    }
+
+    private func presentNewAPIEditor() {
+        newAPIEditorDefaultKind = .newAPI
+        editingNewAPIAccount = newAPIAccounts.first { $0.kind != .deepSeek }
+        isNewAPIEditorPresented = true
     }
 
     var enabledGraphsCount: Int {
@@ -8188,17 +8239,62 @@ struct StatsSettings: View {
                     }
                     .settingsHighlight(id: highlightID("Antigravity Provider"))
 
+                    Defaults.Toggle(key: .enableDeepSeekProvider) {
+                        Text("DeepSeek")
+                    }
+                    .settingsHighlight(id: highlightID("DeepSeek Provider"))
+                    .help("Shows the official DeepSeek account balance. Add the account as a DeepSeek kind under New API Accounts below.")
+                    .onChange(of: enableDeepSeekProvider) { _, enabled in
+                        LLMUsageManager.shared.refreshAll(force: true)
+                        if enabled && !newAPIAccounts.contains(where: { $0.kind == .deepSeek }) {
+                            presentDeepSeekEditor()
+                        }
+                    }
+
+                    if enableDeepSeekProvider {
+                        Button {
+                            presentDeepSeekEditor()
+                        } label: {
+                            Label(
+                                newAPIAccounts.contains(where: { $0.kind == .deepSeek })
+                                    ? "Edit DeepSeek API Key…"
+                                    : "Add DeepSeek API Key…",
+                                systemImage: "key.fill"
+                            )
+                        }
+                        .buttonStyle(.borderless)
+                        .settingsHighlight(id: highlightID("DeepSeek API Key"))
+                    }
+
                     Defaults.Toggle(key: .enableNewAPIProvider) {
                         Text("New API")
                     }
                     .settingsHighlight(id: highlightID("New API Provider"))
-                    .onChange(of: enableNewAPIProvider) { _, _ in
+                    .onChange(of: enableNewAPIProvider) { _, enabled in
                         LLMUsageManager.shared.refreshAll(force: true)
+                        if enabled && !newAPIAccounts.contains(where: { $0.kind != .deepSeek }) {
+                            presentNewAPIEditor()
+                        }
+                    }
+
+                    if enableNewAPIProvider {
+                        Button {
+                            presentNewAPIEditor()
+                        } label: {
+                            Label(
+                                newAPIAccounts.contains(where: { $0.kind != .deepSeek })
+                                    ? "Edit New API Key…"
+                                    : "Add New API Key…",
+                                systemImage: "key.fill"
+                            )
+                        }
+                        .buttonStyle(.borderless)
+                        .settingsHighlight(id: highlightID("New API API Key"))
                     }
                 } header: {
                     Text("LLM Providers")
                 } footer: {
-                    Text("Choose which AI providers appear in the Usage tab.")
+                    Text("Choose which AI providers appear in the Usage tab. Claude, Codex, Cursor and Antigravity use their local app sign-in; DeepSeek and New API require an API key. Enabling either one opens the key editor when no account exists.")
                         .multilineTextAlignment(.trailing)
                         .foregroundStyle(.secondary)
                     .font(.caption)
@@ -8245,6 +8341,7 @@ struct StatsSettings: View {
 
                     Button {
                         editingNewAPIAccount = nil
+                        newAPIEditorDefaultKind = .newAPI
                         isNewAPIEditorPresented = true
                     } label: {
                         Label("Add New API Account", systemImage: "plus")
@@ -8464,7 +8561,7 @@ struct StatsSettings: View {
             newAPIAccounts = Defaults[.newAPIAccounts]
         }
         .sheet(isPresented: $isNewAPIEditorPresented) {
-            NewAPIAccountEditor(account: editingNewAPIAccount) { account, apiKey in
+            NewAPIAccountEditor(account: editingNewAPIAccount, defaultKind: newAPIEditorDefaultKind) { account, apiKey in
                 try NewAPIAccountStore.upsert(account, apiKey: apiKey)
                 newAPIAccounts = Defaults[.newAPIAccounts]
                 LLMUsageManager.shared.refreshAll(force: true)
@@ -8517,24 +8614,38 @@ private struct NewAPIAccountEditor: View {
     @State private var kind: NewAPIKind
     @State private var errorMessage: String?
 
-    init(account: NewAPIAccount?, onSave: @escaping (NewAPIAccount, String) throws -> Void) {
+    init(
+        account: NewAPIAccount?,
+        defaultKind: NewAPIKind = .newAPI,
+        onSave: @escaping (NewAPIAccount, String) throws -> Void
+    ) {
         self.account = account
         self.onSave = onSave
-        _name = State(initialValue: account?.name ?? "")
-        _baseURL = State(initialValue: account?.baseURL ?? "https://")
+        let initialKind = account?.kind ?? defaultKind
+        _name = State(initialValue: account?.name ?? (initialKind == .deepSeek ? "DeepSeek" : ""))
+        _baseURL = State(initialValue: account?.baseURL ?? (initialKind == .deepSeek ? "https://api.deepseek.com" : "https://"))
         _apiKey = State(initialValue: account.map { NewAPIKeychain.read(accountID: $0.id) ?? "" } ?? "")
-        _kind = State(initialValue: account?.kind ?? .newAPI)
+        _kind = State(initialValue: initialKind)
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text(account == nil ? "Add New API Account" : "Edit New API Account")
+            Text(editorTitle)
                 .font(.title3.weight(.semibold))
 
             Form {
                 Picker("Type", selection: $kind) {
                     ForEach(NewAPIKind.allCases) { option in
                         Text(option.displayName).tag(option)
+                    }
+                }
+                .onChange(of: kind) { oldKind, newKind in
+                    guard newKind == .deepSeek, oldKind != .deepSeek else { return }
+                    if name.isEmpty || name == oldKind.displayName {
+                        name = "DeepSeek"
+                    }
+                    if baseURL.isEmpty || baseURL == "https://" {
+                        baseURL = "https://api.deepseek.com"
                     }
                 }
                 TextField("Account name", text: $name)
@@ -8568,6 +8679,11 @@ private struct NewAPIAccountEditor: View {
         }
         .padding(20)
         .frame(width: 470)
+    }
+
+    private var editorTitle: String {
+        if account != nil { return "Edit API Account" }
+        return kind == .deepSeek ? "Add DeepSeek API Key" : "Add API Account"
     }
 
     private func save() {
@@ -8785,21 +8901,105 @@ struct ScreenAssistantSettings: View {
     @ObservedObject var screenAssistantManager = ScreenAssistantManager.shared
     @Default(.enableScreenAssistant) var enableScreenAssistant
     @Default(.screenAssistantDisplayMode) var screenAssistantDisplayMode
-    @Default(.geminiApiKey) var geminiApiKey
-    @State private var apiKeyText = ""
-    @State private var showingApiKey = false
+    @Default(.configuredAIProviders) var configuredAIProviders
+    @Default(.selectedAIProvider) var selectedAIProvider
+    @Default(.selectedAIModel) var selectedAIModel
+    @State private var editingProvider: AIModelProvider?
 
     private func highlightID(_ title: String) -> String {
         SettingsTab.screenAssistant.highlightID(for: title)
+    }
+
+    private var availableProviders: [AIModelProvider] {
+        AIModelProvider.allCases.filter { !configuredAIProviders.contains($0) }
+    }
+
+    private func providerIcon(_ provider: AIModelProvider) -> String {
+        switch provider {
+        case .gemini: return "sparkles"
+        case .openai: return "brain.head.profile"
+        case .claude: return "doc.text"
+        case .deepSeek: return "waveform.path.ecg"
+        case .local: return "server.rack"
+        case .groq: return "bolt.fill"
+        }
+    }
+
+    private func providerRow(_ provider: AIModelProvider) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: providerIcon(provider))
+                .foregroundStyle(.blue)
+                .frame(width: 18)
+
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text(provider.displayName)
+                    if provider == selectedAIProvider {
+                        Text("Active")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.tint)
+                    }
+                }
+                Text(AIProviderConfiguration.hasCredential(provider) ? "Configured" : "Credential not set")
+                    .font(.caption)
+                    .foregroundStyle(AIProviderConfiguration.hasCredential(provider) ? AnyShapeStyle(.secondary) : AnyShapeStyle(.red))
+            }
+
+            Spacer()
+
+            if provider != selectedAIProvider {
+                Button("Use") { makeActive(provider) }
+                    .buttonStyle(.borderless)
+            }
+
+            Button("Configure") { editingProvider = provider }
+                .buttonStyle(.borderless)
+
+            Button(role: .destructive) {
+                removeProvider(provider)
+            } label: {
+                Image(systemName: "trash")
+            }
+            .buttonStyle(.borderless)
+            .help("Remove \(provider.displayName) from the assistant")
+        }
+    }
+
+    private func appendConfiguredProvider(_ provider: AIModelProvider) {
+        var next = configuredAIProviders
+        guard !next.contains(provider) else { return }
+        next.append(provider)
+        configuredAIProviders = next
+    }
+
+    private func addProvider(_ provider: AIModelProvider) {
+        appendConfiguredProvider(provider)
+        editingProvider = provider
+    }
+
+    private func makeActive(_ provider: AIModelProvider) {
+        selectedAIProvider = provider
+        if selectedAIModel == nil || !provider.supportedModels.contains(where: { $0.id == selectedAIModel?.id }) {
+            selectedAIModel = provider.supportedModels.first
+        }
+        NotificationCenter.default.post(name: .aiModelConfigurationChanged, object: nil)
+    }
+
+    private func removeProvider(_ provider: AIModelProvider) {
+        let remaining = configuredAIProviders.filter { $0 != provider }
+        configuredAIProviders = remaining.isEmpty ? [.gemini] : remaining
+        if selectedAIProvider == provider {
+            makeActive(configuredAIProviders.first ?? .gemini)
+        }
     }
 
     var body: some View {
         Form {
             Section {
                 Defaults.Toggle(key: .enableScreenAssistant) {
-                    Text("Enable Screen Assistant")
+                    Text("Enable AI Assistant")
                 }
-                .settingsHighlight(id: highlightID("Enable Screen Assistant"))
+                .settingsHighlight(id: highlightID("Enable AI Assistant"))
             } header: {
                 Text("AI Assistant")
             } footer: {
@@ -8808,58 +9008,30 @@ struct ScreenAssistantSettings: View {
 
             if enableScreenAssistant {
                 Section {
-                    HStack {
-                        Text("Gemini API Key")
-                        Spacer()
-                        if geminiApiKey.isEmpty {
-                            Text("Not Set")
-                                .foregroundColor(.red)
-                        } else {
-                            Text("••••••••")
-                                .foregroundColor(.green)
-                        }
-
-                        Button(showingApiKey ? "Hide" : (geminiApiKey.isEmpty ? "Set" : "Change")) {
-                            if showingApiKey {
-                                showingApiKey = false
-                                if !apiKeyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                                    Defaults[.geminiApiKey] = apiKeyText
-                                }
-                                apiKeyText = ""
-                            } else {
-                                showingApiKey = true
-                                apiKeyText = geminiApiKey
-                            }
-                        }
+                    ForEach(configuredAIProviders) { provider in
+                        providerRow(provider)
                     }
 
-                    if showingApiKey {
-                        VStack(alignment: .leading, spacing: 8) {
-                            SecureField("Enter your Gemini API Key", text: $apiKeyText)
-                                .textFieldStyle(.roundedBorder)
-
-                            Text("Get your free API key from Google AI Studio")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-
-                            HStack {
-                                Button("Open Google AI Studio") {
-                                    NSWorkspace.shared.open(URL(string: "https://aistudio.google.com/app/apikey")!)
-                                }
-                                .buttonStyle(.link)
-
-                                Spacer()
-
-                                Button("Save") {
-                                    Defaults[.geminiApiKey] = apiKeyText
-                                    showingApiKey = false
-                                    apiKeyText = ""
-                                }
-                                .disabled(apiKeyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    Menu {
+                        ForEach(availableProviders) { provider in
+                            Button {
+                                addProvider(provider)
+                            } label: {
+                                Label(provider.displayName, systemImage: providerIcon(provider))
                             }
                         }
+                    } label: {
+                        Label("Add Provider", systemImage: "plus")
                     }
+                    .disabled(availableProviders.isEmpty)
+                    .settingsHighlight(id: highlightID("Add Provider"))
+                } header: {
+                    Text("Providers")
+                } footer: {
+                    Text("Add the AI providers you use, configure their API key and choose the active one. Local Model uses an Ollama-compatible endpoint instead of an API key.")
+                }
 
+                Section {
                     HStack {
                         Text("Display Mode")
                         Spacer()
@@ -8938,7 +9110,25 @@ struct ScreenAssistantSettings: View {
             }
         }
         .formStyle(.grouped)
-        .navigationTitle("Screen Assistant")
+        .navigationTitle("AI Assistant")
+        .onAppear {
+            AIProviderConfiguration.ensureConfiguredProviders()
+        }
+        .sheet(item: $editingProvider) { provider in
+            AIProviderEditor(provider: provider) { value, baseURL in
+                AIProviderConfiguration.setCredential(value, for: provider)
+                if let baseURL {
+                    Defaults[.deepSeekBaseURL] = baseURL
+                }
+                appendConfiguredProvider(provider)
+                // If the current provider has no credential yet (the usual
+                // first-run state), make the newly configured one active.
+                if selectedAIProvider == provider || !AIProviderConfiguration.hasCredential(selectedAIProvider) {
+                    makeActive(provider)
+                }
+                editingProvider = nil
+            }
+        }
     }
 
     private func timeAgoString(from date: Date) -> String {
@@ -8956,6 +9146,103 @@ struct ScreenAssistantSettings: View {
             let days = Int(interval / 86400)
             return "\(days)d ago"
         }
+    }
+}
+
+private struct AIProviderEditor: View {
+    let provider: AIModelProvider
+    let onSave: (String, String?) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var value: String
+    @State private var baseURL: String
+
+    init(provider: AIModelProvider, onSave: @escaping (String, String?) -> Void) {
+        self.provider = provider
+        self.onSave = onSave
+        _value = State(initialValue: AIProviderConfiguration.credential(for: provider))
+        _baseURL = State(initialValue: Defaults[.deepSeekBaseURL])
+    }
+
+    private var isLocal: Bool { provider == .local }
+    private var isDeepSeek: Bool { provider == .deepSeek }
+
+    private var baseURLIsValid: Bool {
+        let trimmed = baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let url = URL(string: trimmed),
+              let scheme = url.scheme?.lowercased(),
+              ["http", "https"].contains(scheme),
+              url.host != nil else { return false }
+        return true
+    }
+
+    private var helpText: String {
+        switch provider {
+        case .gemini:
+            return "Get a key from Google AI Studio (aistudio.google.com)."
+        case .openai:
+            return "Get a key from the OpenAI Platform dashboard."
+        case .claude:
+            return "Get a key from the Anthropic Console."
+        case .deepSeek:
+            return "Use the DeepSeek platform key. The base URL normally stays https://api.deepseek.com; a /v1 suffix is also supported."
+        case .groq:
+            return "Get a key from the Groq Console."
+        case .local:
+            return "The Ollama-compatible endpoint, for example http://localhost:11434."
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text(isLocal ? "Configure Local Model" : "Configure \(provider.displayName)")
+                .font(.title3.weight(.semibold))
+
+            Text(provider.description)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            if isDeepSeek {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Base URL").font(.caption).foregroundStyle(.secondary)
+                    TextField("https://api.deepseek.com", text: $baseURL)
+                        .textFieldStyle(.roundedBorder)
+                }
+            }
+
+            if isLocal {
+                TextField("http://localhost:11434", text: $value)
+                    .textFieldStyle(.roundedBorder)
+            } else {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(isDeepSeek ? "API Key" : (isLocal ? "Endpoint" : "API Key"))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    SecureField(isDeepSeek ? "sk-…" : "API key", text: $value)
+                        .textFieldStyle(.roundedBorder)
+                }
+            }
+
+            Text(helpText)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            HStack {
+                Spacer()
+                Button("Cancel") { dismiss() }
+                    .keyboardShortcut(.cancelAction)
+                Button("Save") {
+                    onSave(value, isDeepSeek ? baseURL : nil)
+                    dismiss()
+                }
+                .buttonStyle(.borderedProminent)
+                .keyboardShortcut(.defaultAction)
+                .disabled(value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                          || (isDeepSeek && !baseURLIsValid))
+            }
+        }
+        .padding(20)
+        .frame(width: 440)
     }
 }
 

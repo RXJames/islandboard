@@ -92,7 +92,7 @@ struct ShelfItem: Identifiable, Codable, Equatable, Sendable {
     
     var displayName: String {
         switch kind {
-        case .file(let bookmarkData):
+        case .file:
             if let cached = cachedDisplayName, !cached.isEmpty {
                 return cached
             }

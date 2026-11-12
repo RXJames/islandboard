@@ -345,8 +345,8 @@ enum ScreenAssistantDisplayMode: String, CaseIterable, Codable, Defaults.Seriali
     
     var description: String {
         switch self {
-        case .popover: return String(localized: "Shows screen assistant as a dropdown attached to the AI button")
-        case .panel: return String(localized: "Shows screen assistant in a floating panel near the notch")
+        case .popover: return String(localized: "Shows AI assistant as a dropdown attached to the AI button")
+        case .panel: return String(localized: "Shows AI assistant in a floating panel near the notch")
         }
     }
 }
@@ -796,6 +796,7 @@ enum AIModelProvider: String, CaseIterable, Identifiable, Defaults.Serializable 
     case gemini = "Gemini"
     case openai = "OpenAI GPT"
     case claude = "Claude"
+    case deepSeek = "DeepSeek"
     case local = "Local Model"
     case groq = "Groq"
     
@@ -810,6 +811,7 @@ enum AIModelProvider: String, CaseIterable, Identifiable, Defaults.Serializable 
         case .gemini: return String(localized: "Google's Gemini AI with multimodal capabilities")
         case .openai: return String(localized: "OpenAI's GPT models with advanced reasoning")
         case .claude: return String(localized: "Anthropic's Claude with strong analytical skills")
+        case .deepSeek: return String(localized: "DeepSeek's OpenAI-compatible chat and reasoning models")
         case .local: return String(localized: "Local AI model (Ollama or similar)")
         case .groq: return String(localized: "Groq's fast inference for OpenAI-compatible models")
         }
@@ -846,6 +848,11 @@ enum AIModelProvider: String, CaseIterable, Identifiable, Defaults.Serializable 
             return [
                 AIModel(id: "claude-3-5-sonnet", name: "Claude 3.5 Sonnet", supportsThinking: false),
                 AIModel(id: "claude-3-haiku", name: "Claude 3 Haiku", supportsThinking: false)
+            ]
+        case .deepSeek:
+            return [
+                AIModel(id: "deepseek-chat", name: "DeepSeek Chat", supportsThinking: false),
+                AIModel(id: "deepseek-reasoner", name: "DeepSeek Reasoner", supportsThinking: true)
             ]
         case .local:
             return [
@@ -1016,6 +1023,7 @@ extension Defaults.Keys {
     static let nonNotchHeight = Key<CGFloat>("nonNotchHeight", default: 32)
     static let notchHeight = Key<CGFloat>("notchHeight", default: 32)
     static let openNotchWidth = Key<CGFloat>("openNotchWidth", default: 640)
+    static let openNotchHeight = Key<CGFloat>("openNotchHeight", default: 200)
     static let closedNotchWidth = Key<CGFloat>("closedNotchWidth", default: 150)
     static let customizePhysicalNotchWidth = Key<Bool>("customizePhysicalNotchWidth", default: false)
         //static let openLastTabByDefault = Key<Bool>("openLastTabByDefault", default: false)
@@ -1313,6 +1321,7 @@ extension Defaults.Keys {
     static let enableCodexProvider = Key<Bool>("enableCodexProvider", default: true)
     static let enableCursorProvider = Key<Bool>("enableCursorProvider", default: true)
     static let enableAntigravityProvider = Key<Bool>("enableAntigravityProvider", default: true)
+    static let enableDeepSeekProvider = Key<Bool>("enableDeepSeekProvider", default: false)
     static let enableNewAPIProvider = Key<Bool>("enableNewAPIProvider", default: false)
     static let newAPIAccounts = Key<[NewAPIAccount]>("newAPIAccounts", default: [])
     static let autoStartStatsMonitoring = Key<Bool>("autoStartStatsMonitoring", default: true)
@@ -1396,10 +1405,15 @@ extension Defaults.Keys {
     // MARK: Screen Assistant Feature
     static let enableScreenAssistant = Key<Bool>("enableScreenAssistant", default: true)
     static let screenAssistantDisplayMode = Key<ScreenAssistantDisplayMode>("screenAssistantDisplayMode", default: .panel)
+    /// Providers the user has explicitly added to the AI Assistant.
+    static let configuredAIProviders = Key<[AIModelProvider]>("configuredAIProviders", default: [.gemini])
+    static let aiProvidersInitialized = Key<Bool>("aiProvidersInitialized", default: false)
     static let geminiApiKey = Key<String>("geminiApiKey", default: "")
     static let openaiApiKey = Key<String>("openaiApiKey", default: "")
     static let claudeApiKey = Key<String>("claudeApiKey", default: "")
     static let groqApiKey = Key<String>("groqApiKey", default: "")
+    static let deepSeekApiKey = Key<String>("deepSeekApiKey", default: "")
+    static let deepSeekBaseURL = Key<String>("deepSeekBaseURL", default: "https://api.deepseek.com")
     static let selectedAIProvider = Key<AIModelProvider>("selectedAIProvider", default: .gemini)
     static let selectedAIModel = Key<AIModel?>("selectedAIModel", default: nil)
     static let enableThinkingMode = Key<Bool>("enableThinkingMode", default: false)

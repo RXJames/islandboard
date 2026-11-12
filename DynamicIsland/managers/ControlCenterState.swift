@@ -331,8 +331,6 @@ final class ControlCenterState: ObservableObject {
             accessibility.openSystemSettings()
             return
         }
-        NSLog("AtollFocus: select start mode=%@ uuid=%@ name=%@",
-              modeIdentifier ?? "-", modeUUID ?? "-", displayName ?? "-")
         // The automation clicks the menu bar, which moves the pointer out of
         // the notch; veto the hover-exit close for its whole duration.
         let wasInteracting = isInteracting
@@ -342,7 +340,6 @@ final class ControlCenterState: ObservableObject {
                                                 modeUUID: modeUUID,
                                                 displayName: displayName,
                                                 moduleName: moduleName)
-            NSLog("AtollFocus: select result=%@", ok ? "ok" : "failed")
             await MainActor.run { self.isInteracting = wasInteracting }
             if !ok {
                 // A toast, not a Settings jump: the switch may still have

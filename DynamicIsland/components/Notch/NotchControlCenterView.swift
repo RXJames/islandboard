@@ -31,7 +31,9 @@ import Defaults
 struct NotchControlCenterView: View {
     @ObservedObject private var state = ControlCenterState.shared
     @ObservedObject private var coordinator = DynamicIslandViewCoordinator.shared
+    @EnvironmentObject private var vm: DynamicIslandViewModel
     @State private var configs: [ControlTileConfig] = ControlCenterLayout.load()
+    @State private var scrollSuppressionToken = UUID()
     @State private var editing = false
     @State private var toast: String?
     /// Drives the iOS-style jiggle while editing (toggles forever once set).
@@ -76,6 +78,11 @@ struct NotchControlCenterView: View {
                         .padding(.bottom, 4)
                 }
                 .scrollEdgeBlurFix()
+                .modifier(NotchScrollBottomGate(requiresScrolling: true) { atBottom in
+                    // Mirror System Monitor: the close-scroll blur/gesture is
+                    // suppressed until the grid is actually at its bottom.
+                    vm.setScrollGestureSuppression(!atBottom, token: scrollSuppressionToken)
+                })
             }
         }
         .padding(.horizontal, 16)
@@ -84,6 +91,9 @@ struct NotchControlCenterView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .onAppear {
             ControlCenterState.shared.start()
+            // Until geometry reports the bottom edge, the page owns its
+            // scroll gesture instead of letting it blur/close the notch.
+            vm.setScrollGestureSuppression(true, token: scrollSuppressionToken)
             updatePreferredHeight()
         }
         .onChange(of: configs) { _, _ in updatePreferredHeight() }
@@ -114,6 +124,7 @@ struct NotchControlCenterView: View {
             dragKind = nil
             previewConfigs = []
             ControlCenterState.shared.isInteracting = false
+            vm.setScrollGestureSuppression(false, token: scrollSuppressionToken)
         }
         .overlay(alignment: .bottom) {
             if let toast {
@@ -133,6 +144,19 @@ struct NotchControlCenterView: View {
                 state.lastError = nil
             }
         }
+    }
+
+    private func resetToDefaults() {
+        dragKind = nil
+        previewConfigs = []
+        dragTranslation = .zero
+        resizeKind = nil
+        resizeLiveWidth = nil
+        withAnimation(.smooth(duration: 0.22)) {
+            configs = ControlTileKind.defaultLayout
+        }
+        ControlCenterLayout.save(configs)
+        updatePreferredHeight()
     }
 
     /// Mirrors this view's layout metrics (padding + header + tile rows +
@@ -165,12 +189,19 @@ struct NotchControlCenterView: View {
     }
 
     private var header: some View {
-        HStack {
+        HStack(spacing: 10) {
             Image(systemName: "switch.2")
                 .foregroundStyle(.secondary)
             Text("Control Center")
                 .font(.system(size: 13, weight: .semibold))
             Spacer()
+            if editing {
+                Button("Reset") { resetToDefaults() }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .help("Restore the three large factory sliders")
+            }
             Button(editing ? "Done" : "Edit") {
                 withAnimation(.smooth(duration: 0.2)) { editing.toggle() }
             }
@@ -264,9 +295,6 @@ struct NotchControlCenterView: View {
                 if !focusPressActive {
                     focusPressActive = true
                     focusWasOnAtPress = state.focusOn
-                    NSLog("AtollFocus: press focusOn=%@ needsFDA=%@",
-                          state.focusOn ? "yes" : "no",
-                          state.focusNeedsPermission ? "yes" : "no")
                     if state.focusNeedsPermission {
                         focusNeedsAccessAtPress = true
                     } else if !focusWasOnAtPress {

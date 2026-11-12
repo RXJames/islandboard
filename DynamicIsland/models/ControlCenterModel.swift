@@ -81,17 +81,17 @@ enum ControlTileKind: String, Codable, CaseIterable, Identifiable {
         }
     }
 
-    /// Compact default: four small toggles on the first row, the two
-    /// sliders full width below; the keyboard light starts hidden so the
-    /// grid fits the notch without scrolling.
+    /// Factory layout: the three slider controls the notch is expected to
+    /// replace first, each at the full width. The remaining toggles stay in
+    /// the catalogue but start hidden, so Edit can bring them back.
     static let defaultLayout: [ControlTileConfig] = [
-        .init(kind: .wifi, size: .small),
-        .init(kind: .focus, size: .small),
-        .init(kind: .nightShift, size: .small),
-        .init(kind: .darkMode, size: .small),
+        .init(kind: .keyboard, size: .large),
         .init(kind: .volume, size: .large),
         .init(kind: .brightness, size: .large),
-        .init(kind: .keyboard, size: .medium, visible: false)
+        .init(kind: .wifi, size: .small, visible: false),
+        .init(kind: .focus, size: .small, visible: false),
+        .init(kind: .nightShift, size: .small, visible: false),
+        .init(kind: .darkMode, size: .small, visible: false)
     ]
 }
 

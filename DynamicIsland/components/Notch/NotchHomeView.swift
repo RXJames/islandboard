@@ -224,12 +224,29 @@ struct DynamicIslandArtworkSourceView: View {
 
 struct MusicPlayerView: View {
     @EnvironmentObject var vm: DynamicIslandViewModel
+    @Default(.openNotchHeight) private var openNotchHeight
     let albumArtNamespace: Namespace.ID
+
+    /// The Home page shares the notch height with `DynamicIslandHeader`;
+    /// both the artwork and the right column must fit the space left after
+    /// that header and Home's own vertical padding.
+    private var homeContentHeight: CGFloat {
+        let headerHeight = max(24, vm.effectiveClosedNotchHeight)
+        let verticalPadding: CGFloat = Defaults[.enableMinimalisticUI] ? 0 : 16
+        let height = min(max(openNotchHeight, minExpandedNotchHeight), maxExpandedNotchHeight)
+        return max(96, height - headerHeight - verticalPadding)
+    }
+
+    /// Keep the artwork inside the user-selected expanded height instead of
+    /// letting a fixed 150pt square push the Home clip past the bottom edge.
+    private var albumArtSide: CGFloat {
+        min(150, homeContentHeight)
+    }
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             AlbumArtView(vm: vm, albumArtNamespace: albumArtNamespace)
-                .frame(width: 150, height: 150)
+                .frame(width: albumArtSide, height: albumArtSide)
             MusicControlsView()
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -890,6 +907,7 @@ struct MusicControlsView: View {
 
 struct NotchHomeView: View {
     @EnvironmentObject var vm: DynamicIslandViewModel
+    @Default(.openNotchHeight) private var openNotchHeight
     @ObservedObject var webcamManager = WebcamManager.shared
     @ObservedObject var batteryModel = BatteryStatusViewModel.shared
     @ObservedObject var coordinator = DynamicIslandViewCoordinator.shared
@@ -918,11 +936,18 @@ struct NotchHomeView: View {
         enableHomeWeather
     }
 
+    private var homeContentHeight: CGFloat {
+        // Header + Home's vertical padding live inside the same expanded
+        // notch. Subtracting both keeps the content off the rounded bottom
+        // edge; the result follows the user's expanded-height setting.
+        let headerHeight = max(24, vm.effectiveClosedNotchHeight)
+        let verticalPadding: CGFloat = Defaults[.enableMinimalisticUI] ? 0 : 16
+        let height = min(max(openNotchHeight, minExpandedNotchHeight), maxExpandedNotchHeight)
+        return max(96, height - headerHeight - verticalPadding)
+    }
+
     private var homeWeatherColumnHeight: CGFloat {
-        // Leave the same bottom clearance as the other tabs; with the full
-        // openNotchSize height the Home clip can reach past the window's
-        // rounded bottom edge and truncate the corner.
-        max(120, openNotchSize.height - 28)
+        homeContentHeight
     }
 
     private var shouldShowSideLyrics: Bool {

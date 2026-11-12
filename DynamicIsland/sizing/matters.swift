@@ -66,12 +66,17 @@ func sideLyricsRequiredNotchWidth() -> CGFloat {
         + SideLyricsLayout.combinedInset
 }
 
+let minExpandedNotchHeight: CGFloat = 180
+let maxExpandedNotchHeight: CGFloat = 360
+
 var openNotchSize: CGSize {
     let storedWidth = Defaults[.openNotchWidth]
     let minWidth = currentRecommendedMinimumNotchWidth()
     let maxWidth = maxAllowedNotchWidth()
     let width = min(max(storedWidth, minWidth, sideLyricsRequiredNotchWidth()), maxWidth)
-    return .init(width: width, height: 200)
+    let storedHeight = Defaults[.openNotchHeight]
+    let height = min(max(storedHeight, minExpandedNotchHeight), maxExpandedNotchHeight)
+    return .init(width: width, height: height)
 }
 
 /// Maximum notch width based on the current screen's point width.

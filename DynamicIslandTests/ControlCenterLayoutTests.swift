@@ -52,12 +52,19 @@ final class ControlCenterLayoutTests: XCTestCase {
         XCTAssertEqual(rows.flatMap { $0 }.map(\.kind), [.wifi, .darkMode])
     }
 
-    func testDefaultLayoutFitsThreeRows() {
-        // Four small toggles, two full-width sliders, keyboard hidden: the
-        // notch must not need a scroll on first launch.
-        let rows = ControlCenterLayout.packRows(in: ControlTileKind.defaultLayout)
-        XCTAssertEqual(rows.count, 3)
-        XCTAssertFalse(ControlTileKind.defaultLayout.contains { $0.kind == .keyboard && $0.visible })
+    func testDefaultLayoutIsThreeLargeSliders() {
+        let defaults = ControlTileKind.defaultLayout
+        let visible = defaults.filter(\.visible)
+
+        XCTAssertEqual(visible.map(\.kind), [.keyboard, .volume, .brightness])
+        XCTAssertTrue(visible.allSatisfy { $0.size == .large })
+        XCTAssertEqual(ControlCenterLayout.packRows(in: defaults).count, 3)
+
+        // Other tiles remain available in Edit instead of being deleted.
+        XCTAssertEqual(
+            Set(defaults.filter { !$0.visible }.map(\.kind)),
+            [.wifi, .focus, .nightShift, .darkMode]
+        )
     }
 
     func testCycleSizeWrapsAround() {

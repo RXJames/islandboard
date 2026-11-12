@@ -774,7 +774,10 @@ struct ContentView: View {
                             }
                     }
             }
-            .conditionalModifier((Defaults[.closeGestureEnabled] || Defaults[.reverseScrollGestures]) && Defaults[.enableGestures] && interactionsEnabled) { view in
+            // Upward swipes only exist for reverse-scroll mode, where they
+            // open the closed notch. They must never collapse an open notch:
+            // with the default scroll direction there is no up gesture at all.
+            .conditionalModifier(Defaults[.reverseScrollGestures] && Defaults[.enableGestures] && interactionsEnabled) { view in
                 view
                     .panGesture(direction: .up) { translation, phase in
                         handleUpGesture(translation: translation, phase: phase)
@@ -2694,6 +2697,8 @@ struct ContentView: View {
     }
     
     private func handleUpGesture(translation: CGFloat, phase: NSEvent.Phase) {
+        // Reverse-scroll mode uses an upward swipe to open, never to close.
+        guard vm.notchState == .closed else { return }
         handleScrollGesture(isDownward: false, translation: translation, phase: phase)
     }
 

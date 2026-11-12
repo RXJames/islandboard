@@ -36,7 +36,7 @@ struct ProfileSelectionView: View {
             id: "developer",
             name: String(localized: "Developer"),
             icon: "terminal.fill",
-            description: String(localized: "Code and debug with color picker, stats monitoring, and screen assistant."),
+            description: String(localized: "Code and debug with color picker, stats monitoring, and AI Assistant."),
             gradient: [Color.blue, Color.purple]
         ),
         UserProfile(

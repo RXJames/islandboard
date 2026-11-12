@@ -117,7 +117,7 @@ class ModelSelectionPanel: NSPanel {
 
 // MARK: - Model Selection View
 struct ModelSelectionView: View {
-    private let primaryProviders: [AIModelProvider] = [.gemini, .openai, .claude, .local]
+    @State private var availableProviders: [AIModelProvider] = [.gemini]
     @State private var selectedProvider: AIModelProvider = Defaults[.selectedAIProvider]
     @State private var selectedModel: AIModel? = Defaults[.selectedAIModel]
     @State private var enableThinking: Bool = Defaults[.enableThinkingMode]
@@ -126,6 +126,8 @@ struct ModelSelectionView: View {
     @State private var geminiApiKey: String = Defaults[.geminiApiKey]
     @State private var openaiApiKey: String = Defaults[.openaiApiKey]
     @State private var claudeApiKey: String = Defaults[.claudeApiKey]
+    @State private var deepSeekApiKey: String = Defaults[.deepSeekApiKey]
+    @State private var deepSeekBaseURL: String = Defaults[.deepSeekBaseURL]
     @State private var localEndpoint: String = Defaults[.localModelEndpoint]
     @State private var groqApiKey: String = Defaults[.groqApiKey]
     
@@ -172,7 +174,7 @@ struct ModelSelectionView: View {
                             .foregroundColor(.primary)
                         
                         LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 2), spacing: 12) {
-                            ForEach(primaryProviders) { provider in
+                            ForEach(availableProviders.filter { $0 != .groq }) { provider in
                                 ProviderCard(
                                     provider: provider,
                                     isSelected: selectedProvider == provider,
@@ -181,12 +183,14 @@ struct ModelSelectionView: View {
                             }
                         }
 
-                        ProviderCard(
-                            provider: .groq,
-                            isSelected: selectedProvider == .groq,
-                            onSelect: { selectProvider(.groq) },
-                            isWide: true
-                        )
+                        if availableProviders.contains(.groq) {
+                            ProviderCard(
+                                provider: .groq,
+                                isSelected: selectedProvider == .groq,
+                                onSelect: { selectProvider(.groq) },
+                                isWide: true
+                            )
+                        }
                     }
                     
                     Divider()
@@ -254,6 +258,8 @@ struct ModelSelectionView: View {
                             geminiApiKey: $geminiApiKey,
                             openaiApiKey: $openaiApiKey,
                             claudeApiKey: $claudeApiKey,
+                            deepSeekApiKey: $deepSeekApiKey,
+                            deepSeekBaseURL: $deepSeekBaseURL,
                             localEndpoint: $localEndpoint,
                             groqApiKey: $groqApiKey
                         )
@@ -299,6 +305,13 @@ struct ModelSelectionView: View {
             return !openaiApiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         case .claude:
             return !claudeApiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        case .deepSeek:
+            let trimmed = deepSeekBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard let url = URL(string: trimmed),
+                  let scheme = url.scheme?.lowercased(),
+                  ["http", "https"].contains(scheme),
+                  url.host != nil else { return false }
+            return !deepSeekApiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         case .local:
             return !localEndpoint.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         case .groq:
@@ -307,7 +320,12 @@ struct ModelSelectionView: View {
     }
     
     private func loadCurrentConfiguration() {
+        AIProviderConfiguration.ensureConfiguredProviders()
+        availableProviders = Defaults[.configuredAIProviders]
         selectedProvider = Defaults[.selectedAIProvider]
+        if !availableProviders.contains(selectedProvider), let first = availableProviders.first {
+            selectedProvider = first
+        }
         selectedModel = Defaults[.selectedAIModel]
         ensureValidModelSelection()
         enableThinking = Defaults[.enableThinkingMode]
@@ -315,6 +333,8 @@ struct ModelSelectionView: View {
         geminiApiKey = Defaults[.geminiApiKey]
         openaiApiKey = Defaults[.openaiApiKey]
         claudeApiKey = Defaults[.claudeApiKey]
+        deepSeekApiKey = Defaults[.deepSeekApiKey]
+        deepSeekBaseURL = Defaults[.deepSeekBaseURL]
         localEndpoint = Defaults[.localModelEndpoint]
         groqApiKey = Defaults[.groqApiKey]
     }
@@ -322,6 +342,9 @@ struct ModelSelectionView: View {
     private func saveConfiguration() {
         ensureValidModelSelection()
 
+        if !availableProviders.contains(selectedProvider), let first = availableProviders.first {
+            selectedProvider = first
+        }
         Defaults[.selectedAIProvider] = selectedProvider
         Defaults[.selectedAIModel] = selectedModel
         Defaults[.enableThinkingMode] = enableThinking
@@ -329,6 +352,8 @@ struct ModelSelectionView: View {
         Defaults[.geminiApiKey] = geminiApiKey
         Defaults[.openaiApiKey] = openaiApiKey
         Defaults[.claudeApiKey] = claudeApiKey
+        Defaults[.deepSeekApiKey] = deepSeekApiKey
+        Defaults[.deepSeekBaseURL] = deepSeekBaseURL
         Defaults[.localModelEndpoint] = localEndpoint
         Defaults[.groqApiKey] = groqApiKey
         
@@ -411,6 +436,7 @@ struct ProviderCard: View {
         case .gemini: return "sparkles"
         case .openai: return "brain.head.profile"
         case .claude: return "doc.text"
+        case .deepSeek: return "waveform.path.ecg"
         case .local: return "server.rack"
         case .groq: return "bolt.fill"
         }
@@ -471,6 +497,8 @@ struct ApiConfigurationSection: View {
     @Binding var geminiApiKey: String
     @Binding var openaiApiKey: String
     @Binding var claudeApiKey: String
+    @Binding var deepSeekApiKey: String
+    @Binding var deepSeekBaseURL: String
     @Binding var localEndpoint: String
     @Binding var groqApiKey: String
     
@@ -501,6 +529,22 @@ struct ApiConfigurationSection: View {
                     helpText: "Get your API key from Anthropic Console"
                 )
                 
+            case .deepSeek:
+                VStack(alignment: .leading, spacing: 12) {
+                    ApiKeyField(
+                        title: "Base URL",
+                        placeholder: "https://api.deepseek.com",
+                        value: $deepSeekBaseURL,
+                        helpText: "Use https://api.deepseek.com, or a compatible /v1 base URL.",
+                        isSecure: false
+                    )
+                    ApiKeyField(
+                        title: "DeepSeek API Key",
+                        placeholder: "Enter your DeepSeek API key",
+                        value: $deepSeekApiKey,
+                        helpText: "Get your key from platform.deepseek.com"
+                    )
+                }
             case .local:
                 ApiKeyField(
                     title: "Local Endpoint",

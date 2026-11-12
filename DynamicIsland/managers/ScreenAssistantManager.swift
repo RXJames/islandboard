@@ -150,6 +150,7 @@ class ScreenAssistantManager: NSObject, ObservableObject {
     
     private override init() {
         super.init()
+        AIProviderConfiguration.ensureConfiguredProviders()
         loadFilesFromDefaults()
     }
     
@@ -395,6 +396,8 @@ class ScreenAssistantManager: NSObject, ObservableObject {
             sendToOpenAIAPI(message: message, files: files)
         case .claude:
             sendToClaudeAPI(message: message, files: files)
+        case .deepSeek:
+            sendToDeepSeekAPI(message: message, files: files)
         case .local:
             sendToLocalAPI(message: message, files: files)
         case .groq:
@@ -505,6 +508,54 @@ class ScreenAssistantManager: NSObject, ObservableObject {
         performClaudeRequest(url: url, requestBody: buildClaudeRequestBody(message: message, files: files, model: modelId), apiKey: apiKey)
     }
     
+    private func sendToDeepSeekAPI(message: String, files: [ScreenAssistantFile]) {
+        let apiKey = Defaults[.deepSeekApiKey].trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !apiKey.isEmpty else {
+            addAssistantMessage("Error: No DeepSeek API key configured. Please set your key in AI Assistant settings.")
+            isLoading = false
+            return
+        }
+
+        let rawBaseURL = Defaults[.deepSeekBaseURL]
+        guard let url = Self.deepSeekChatCompletionsURL(rawBaseURL) else {
+            addAssistantMessage("Error: Invalid DeepSeek Base URL. Use https://api.deepseek.com.")
+            isLoading = false
+            return
+        }
+
+        let selectedModel = Defaults[.selectedAIModel]
+        let modelId: String
+        if let selectedId = selectedModel?.id,
+           AIModelProvider.deepSeek.supportedModels.contains(where: { $0.id == selectedId }) {
+            modelId = selectedId
+        } else {
+            modelId = "deepseek-chat"
+        }
+
+        performOpenAIRequest(
+            url: url,
+            requestBody: buildOpenAIRequestBody(message: message, files: files, model: modelId),
+            apiKey: apiKey,
+            provider: .deepSeek
+        )
+    }
+
+    /// DeepSeek accepts `https://api.deepseek.com/chat/completions` and the
+    /// OpenAI-compatible `.../v1/chat/completions` form. Users may paste
+    /// either the base URL or the full endpoint.
+    static func deepSeekChatCompletionsURL(_ rawBaseURL: String) -> URL? {
+        var trimmed = rawBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        while trimmed.hasSuffix("/") { trimmed.removeLast() }
+        guard !trimmed.isEmpty,
+              let url = URL(string: trimmed),
+              let scheme = url.scheme?.lowercased(),
+              ["http", "https"].contains(scheme),
+              url.host != nil else { return nil }
+        if trimmed.hasSuffix("/chat/completions") { return url }
+        if trimmed.hasSuffix("/v1") { return URL(string: trimmed + "/chat/completions") }
+        return URL(string: trimmed + "/chat/completions")
+    }
+
     private func sendToLocalAPI(message: String, files: [ScreenAssistantFile]) {
         let endpoint = Defaults[.localModelEndpoint]
         guard !endpoint.isEmpty else {
@@ -826,8 +877,8 @@ class ScreenAssistantManager: NSObject, ObservableObject {
         switch provider {
         case .gemini:
             parseGeminiResponse(data: data)
-        case .openai, .groq:
-            parseOpenAIResponse(data: data)
+        case .openai, .groq, .deepSeek:
+            parseOpenAIResponse(data: data, provider: provider)
         case .claude:
             parseClaudeResponse(data: data)
         case .local:
@@ -864,29 +915,29 @@ class ScreenAssistantManager: NSObject, ObservableObject {
         }
     }
     
-    private func parseOpenAIResponse(data: Data) {
+    private func parseOpenAIResponse(data: Data, provider: AIModelProvider) {
         do {
             if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
-                print("✅ ScreenAssistant: Successfully parsed OpenAI JSON response")
-                
+                print("✅ ScreenAssistant: Successfully parsed \(provider.displayName) JSON response")
+
                 if let choices = json["choices"] as? [[String: Any]],
                    let firstChoice = choices.first,
                    let message = firstChoice["message"] as? [String: Any],
                    let content = message["content"] as? String {
-                    
-                    print("✅ ScreenAssistant: Got OpenAI response text: \(content.prefix(100))...")
+
+                    print("✅ ScreenAssistant: Got \(provider.displayName) response text: \(content.prefix(100))...")
                     addAssistantMessage(content)
                 } else {
                     if let error = json["error"] as? [String: Any] {
-                        handleOpenAIError(error: error)
+                        handleOpenAIError(error: error, provider: provider)
                     } else {
-                        print("❌ ScreenAssistant: Unexpected OpenAI response format")
-                        addAssistantMessage("Error: Unexpected response format from OpenAI")
+                        print("❌ ScreenAssistant: Unexpected \(provider.displayName) response format")
+                        addAssistantMessage("Error: Unexpected response format from \(provider.displayName)")
                     }
                 }
             }
         } catch {
-            print("❌ ScreenAssistant: OpenAI JSON parsing error - \(error)")
+            print("❌ ScreenAssistant: \(provider.displayName) JSON parsing error - \(error)")
             addAssistantMessage("Error: Failed to parse response - \(error.localizedDescription)")
         }
     }
@@ -1259,12 +1310,11 @@ class ScreenAssistantManager: NSObject, ObservableObject {
         addAssistantMessage(userFriendlyMessage)
     }
     
-    private func handleOpenAIError(error: [String: Any]) {
+    private func handleOpenAIError(error: [String: Any], provider: AIModelProvider) {
         if let message = error["message"] as? String {
-            let userFriendlyMessage = "❌ **OpenAI Error**\n\n\(message)"
-            addAssistantMessage(userFriendlyMessage)
+            addAssistantMessage("❌ **\(provider.displayName) Error**\n\n\(message)")
         } else {
-            addAssistantMessage("❌ **OpenAI Error**\n\nAn unknown error occurred with OpenAI.")
+            addAssistantMessage("❌ **\(provider.displayName) Error**\n\nAn unknown error occurred with \(provider.displayName).")
         }
     }
     
@@ -1274,6 +1324,65 @@ class ScreenAssistantManager: NSObject, ObservableObject {
             addAssistantMessage(userFriendlyMessage)
         } else {
             addAssistantMessage("❌ **Claude Error**\n\nAn unknown error occurred with Claude.")
+        }
+    }
+}
+
+// MARK: - Provider configuration
+
+/// Credentials for the AI Assistant live in Defaults (unlike the usage
+/// providers' Keychain-backed accounts). This helper centralises the mapping
+/// and the one-time migration that carries existing provider keys into the
+/// new explicit provider list.
+enum AIProviderConfiguration {
+    static func credential(for provider: AIModelProvider) -> String {
+        switch provider {
+        case .gemini: return Defaults[.geminiApiKey]
+        case .openai: return Defaults[.openaiApiKey]
+        case .claude: return Defaults[.claudeApiKey]
+        case .deepSeek: return Defaults[.deepSeekApiKey]
+        case .groq: return Defaults[.groqApiKey]
+        case .local: return Defaults[.localModelEndpoint]
+        }
+    }
+
+    static func setCredential(_ value: String, for provider: AIModelProvider) {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        switch provider {
+        case .gemini: Defaults[.geminiApiKey] = trimmed
+        case .openai: Defaults[.openaiApiKey] = trimmed
+        case .claude: Defaults[.claudeApiKey] = trimmed
+        case .deepSeek: Defaults[.deepSeekApiKey] = trimmed
+        case .groq: Defaults[.groqApiKey] = trimmed
+        case .local: Defaults[.localModelEndpoint] = trimmed
+        }
+    }
+
+    static func hasCredential(_ provider: AIModelProvider) -> Bool {
+        !credential(for: provider).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    static func ensureConfiguredProviders() {
+        if !Defaults[.aiProvidersInitialized] {
+            var migrated: [AIModelProvider] = [.gemini]
+            for provider in AIModelProvider.allCases
+            where provider != .gemini && provider != .local && hasCredential(provider) {
+                migrated.append(provider)
+            }
+            Defaults[.configuredAIProviders] = migrated
+            Defaults[.aiProvidersInitialized] = true
+        }
+
+        var configured = Defaults[.configuredAIProviders]
+        if configured.isEmpty {
+            configured = [.gemini]
+        }
+        let active = Defaults[.selectedAIProvider]
+        if !configured.contains(active) {
+            configured.append(active)
+        }
+        if configured != Defaults[.configuredAIProviders] {
+            Defaults[.configuredAIProviders] = configured
         }
     }
 }

@@ -622,15 +622,26 @@ struct NewAPIUsageProvider: UsageProvider {
     let id: ProviderID = .newAPI
     let accountSource: NewAPIAccountProviding
     let client: NewAPIClient
+    let includedKinds: Set<NewAPIKind>?
+    let emptyMessage: String
 
-    init(accountSource: NewAPIAccountProviding = NewAPIAccountStore(), client: NewAPIClient = NewAPIClient()) {
+    init(
+        accountSource: NewAPIAccountProviding = NewAPIAccountStore(),
+        includedKinds: Set<NewAPIKind>? = nil,
+        emptyMessage: String = "No New API accounts configured",
+        client: NewAPIClient = NewAPIClient()
+    ) {
         self.accountSource = accountSource
+        self.includedKinds = includedKinds
+        self.emptyMessage = emptyMessage
         self.client = client
     }
 
     func fetchSnapshot(now: Date) async throws -> UsageSnapshot {
-        let accounts = accountSource.accounts()
-        guard !accounts.isEmpty else { throw UsageError.notConfigured("No New API accounts configured") }
+        let accounts = accountSource.accounts().filter { account in
+            includedKinds?.contains(account.kind) ?? true
+        }
+        guard !accounts.isEmpty else { throw UsageError.notConfigured(emptyMessage) }
 
         let snapshots = await withTaskGroup(of: NewAPIAccountSnapshot.self, returning: [NewAPIAccountSnapshot].self) { group in
             for account in accounts {
@@ -656,5 +667,26 @@ struct NewAPIUsageProvider: UsageProvider {
         snapshot.newAPIAccounts = snapshots
         snapshot.lastUpdated = now
         return snapshot
+    }
+}
+
+/// DeepSeek is a billing/provider card of its own, backed by the official
+/// `/user/balance` API. Accounts are still created through the shared API
+/// accounts editor with `kind == .deepSeek`.
+struct DeepSeekUsageProvider: UsageProvider {
+    let id: ProviderID = .deepSeek
+    private let delegate: NewAPIUsageProvider
+
+    init(accountSource: NewAPIAccountProviding = NewAPIAccountStore(), client: NewAPIClient = NewAPIClient()) {
+        delegate = NewAPIUsageProvider(
+            accountSource: accountSource,
+            includedKinds: [.deepSeek],
+            emptyMessage: "No DeepSeek accounts configured",
+            client: client
+        )
+    }
+
+    func fetchSnapshot(now: Date) async throws -> UsageSnapshot {
+        try await delegate.fetchSnapshot(now: now)
     }
 }

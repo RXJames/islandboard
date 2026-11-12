@@ -17,7 +17,16 @@ final class LLMUsageManager: ObservableObject {
         self.injectedProviders = providers
     }
 
-    private static let allProviders: [UsageProvider] = [ClaudeUsageProvider(), CodexUsageProvider(), CursorUsageProvider(), AntigravityUsageProvider(), NewAPIUsageProvider()]
+    private static let allProviders: [UsageProvider] = [
+        ClaudeUsageProvider(),
+        CodexUsageProvider(),
+        CursorUsageProvider(),
+        AntigravityUsageProvider(),
+        DeepSeekUsageProvider(),
+        // DeepSeek has its own card; the New API card keeps gateways and
+        // inference-server accounts only.
+        NewAPIUsageProvider(includedKinds: [.newAPI, .server])
+    ]
 
     private var enabledProviders: [UsageProvider] {
         if let injectedProviders { return injectedProviders }

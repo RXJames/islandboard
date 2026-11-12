@@ -81,7 +81,7 @@ struct NotchLLMUsageView: View {
             case .failure(let reason):
                 Text(reason).font(.caption).foregroundStyle(.secondary).lineLimit(2)
             case .success(let snap):
-                if provider == .newAPI {
+                if provider == .newAPI || provider == .deepSeek {
                     newAPISuccess(snap)
                 } else {
                     success(snap, provider: provider)

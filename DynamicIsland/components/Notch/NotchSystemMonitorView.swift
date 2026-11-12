@@ -58,7 +58,7 @@ struct NotchSystemMonitorView: View {
                 .padding(.bottom, 6)
             }
             .scrollEdgeClear()
-            .modifier(MonitorScrollBottomGate { atBottom in
+            .modifier(NotchScrollBottomGate { atBottom in
                 // At the bottom (including rubber-band overscroll), let the
                 // notch's close-scroll gesture through. Everywhere else the
                 // monitor's own scrolling must not blur/dismiss the notch.
@@ -621,13 +621,19 @@ private extension View {
 /// `onScrollGeometryChange` is macOS 15+, while IslandBoard still deploys to 14.
 /// On 14 the monitor keeps the old behaviour; on 15+ the close gesture is
 /// suppressed until the content actually reaches its bottom edge.
-private struct MonitorScrollBottomGate: ViewModifier {
+struct NotchScrollBottomGate: ViewModifier {
+    /// When true, a page whose content already fits the notch never arms the
+    /// close gesture; there is no "scroll to the bottom" for it to reach.
+    var requiresScrolling = false
     let onChange: (Bool) -> Void
 
     func body(content: Content) -> some View {
         if #available(macOS 15.0, *) {
             content.onScrollGeometryChange(for: Bool.self) { geometry in
-                geometry.visibleRect.maxY >= geometry.contentSize.height - 4
+                let scrollable = !requiresScrolling
+                    || geometry.contentSize.height > geometry.visibleRect.height + 4
+                return scrollable
+                    && geometry.visibleRect.maxY >= geometry.contentSize.height - 4
             } action: { _, atBottom in
                 onChange(atBottom)
             }
