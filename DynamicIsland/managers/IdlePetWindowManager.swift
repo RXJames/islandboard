@@ -247,6 +247,11 @@ final class IdlePetWindowManager: NSObject, ObservableObject, NSWindowDelegate {
 
     private static let walkSpeed: CGFloat = 14 // points per second, a stroll
     private static let tickInterval: TimeInterval = 1.0 / 30.0
+    /// While the pet is standing, hidden or parked nothing moves, so the
+    /// loop only needs to notice state changes - not redraw at 30 Hz.
+    private static let restingTickInterval: TimeInterval = 0.25
+    private var tickIsWalking: Bool?
+    private var lastWalkTick: Date?
     /// Loops the pet performs inside the notch before every outing.
     static let introLoops = 3
     /// Length of one stroll and one idle stop; the pet alternates between
@@ -276,6 +281,9 @@ final class IdlePetWindowManager: NSObject, ObservableObject, NSWindowDelegate {
     private func park() {
         guard running || window != nil else { return }
         running = false
+        timer?.invalidate()
+        timer = nil
+        tickIsWalking = nil
         introWork?.cancel()
         introWork = nil
         reappearWork?.cancel()
@@ -299,11 +307,7 @@ final class IdlePetWindowManager: NSObject, ObservableObject, NSWindowDelegate {
         // The pet performs its idle animation inside the notch first, then
         // walks out - toggling walking never teleports it to the menu bar.
         beginIntro()
-        if timer == nil {
-            timer = Timer.scheduledTimer(withTimeInterval: Self.tickInterval, repeats: true) { [weak self] _ in
-                Task { @MainActor in self?.tick() }
-            }
-        }
+        scheduleTick(walking: false)
         // The pet rides in the notch's max-level SkyLight space, so it must
         // not linger over the login window while the screen is locked.
         if dragObservers.isEmpty {
@@ -411,7 +415,14 @@ final class IdlePetWindowManager: NSObject, ObservableObject, NSWindowDelegate {
         // changes, so the pet looks like it walks along the notch's floor.
         let y = screen.frame.maxY - notch.height
         programmaticMove = true
-        window.setFrame(NSRect(x: x, y: y, width: size, height: size), display: window.isVisible)
+        if window.frame.size == CGSize(width: size, height: size) {
+            // Only the origin changes while walking; moving the window is far
+            // cheaper than a full setFrame, which re-lays-out and redraws the
+            // hosting view on every tick.
+            window.setFrameOrigin(NSPoint(x: x, y: y))
+        } else {
+            window.setFrame(NSRect(x: x, y: y, width: size, height: size), display: window.isVisible)
+        }
         programmaticMove = false
     }
 
@@ -468,6 +479,7 @@ final class IdlePetWindowManager: NSObject, ObservableObject, NSWindowDelegate {
         placeWindow()
         joinNotchSpace()
         window?.orderFrontRegardless()
+        scheduleTick(walking: true)
     }
 
     /// One loop of the selected Lottie in seconds; remote sources fall back
@@ -481,7 +493,7 @@ final class IdlePetWindowManager: NSObject, ObservableObject, NSWindowDelegate {
         case .lottieURL:
             return 3
         case .codexPet(let directory):
-            guard let pet = CodexPet.load(directory: directory) else { return 1.1 }
+            guard let pet = CodexPetStore.shared.pet(at: directory) else { return 1.1 }
             return pet.frameInterval * Double(pet.framesPerState)
         }
     }
@@ -492,21 +504,43 @@ final class IdlePetWindowManager: NSObject, ObservableObject, NSWindowDelegate {
     /// Lottie keeps playing in place, which is exactly the idle animation
     /// the pet shows inside the notch, so walking and resting blend.
     private func tick() {
-        guard running, mode == .patrolling, !dragging, introWork == nil else { return }
+        scheduleTick(walking: advance())
+    }
+
+    /// (Re)arms the loop at the rate the pet currently needs: 30 Hz while it
+    /// is actually walking, a slow poll otherwise.
+    private func scheduleTick(walking: Bool) {
+        if timer != nil, tickIsWalking == walking { return }
+        timer?.invalidate()
+        tickIsWalking = walking
+        if !walking { lastWalkTick = nil }
+        let interval = walking ? Self.tickInterval : Self.restingTickInterval
+        let newTimer = Timer(timeInterval: interval, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.tick() }
+        }
+        newTimer.tolerance = walking ? 0 : interval * 0.4
+        RunLoop.main.add(newTimer, forMode: .common)
+        timer = newTimer
+    }
+
+    /// Runs one step of the patrol. Returns true while the pet is moving and
+    /// therefore needs the fast tick.
+    private func advance() -> Bool {
+        guard running, mode == .patrolling, !dragging, introWork == nil else { return false }
         // An expanded notch owns the menu-bar area; the pet waits it out
         // without teleporting. Same while the screen is locked.
         if inputs.notchOpen || screenLocked {
             if window?.isVisible == true { window?.orderOut(nil) }
-            return
+            return false
         }
         if parkedAfterDrag {
             if window?.isVisible == false { window?.orderFrontRegardless() }
             joinNotchSpace()
-            return
+            return false
         }
         if window?.isVisible == false { window?.orderFrontRegardless() }
         joinNotchSpace()  // cheap: only acts if a layout refresh dropped us
-        guard let segment = currentSegment() else { return }
+        guard let segment = currentSegment() else { return false }
         let now = Date()
         if now >= actionEnd {
             standing.toggle()
@@ -515,8 +549,12 @@ final class IdlePetWindowManager: NSObject, ObservableObject, NSWindowDelegate {
                 : Double.random(in: Self.strollRange))
             updateSpriteState()
         }
-        guard !standing else { return }
-        let step = Self.walkSpeed * CGFloat(Self.tickInterval) * dir
+        guard !standing else { return false }
+        // Real elapsed time rather than the nominal interval, so the stroll
+        // keeps its speed when a tick is late or the rate has just changed.
+        let elapsed = lastWalkTick.map { now.timeIntervalSince($0) } ?? Self.tickInterval
+        lastWalkTick = now
+        let step = Self.walkSpeed * CGFloat(min(max(elapsed, 0), 0.1)) * dir
         var next = x + step
         // Turn only when inside the band; the entry leg (walking out from
         // under the notch, or across it toward a far-side band) walks on
@@ -534,6 +572,7 @@ final class IdlePetWindowManager: NSObject, ObservableObject, NSWindowDelegate {
         }
         x = next
         placeWindow()
+        return true
     }
 
     private func setFacing() {

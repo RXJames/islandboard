@@ -30,6 +30,7 @@ class RealTimeAudioSpectrum: NSView {
     private var barLayers: [CAShapeLayer] = []
     private var isPlaying: Bool = true
     private var animationTimer: Timer?
+    private var lastMagnitudes: [Float] = []
     
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -84,9 +85,12 @@ class RealTimeAudioSpectrum: NSView {
     private func startAnimating() {
         guard animationTimer == nil else { return }
         // Use a timer at ~30fps for smooth animation
-        animationTimer = Timer.scheduledTimer(withTimeInterval: 1.0/30.0, repeats: true) { [weak self] _ in
+        let timer = Timer(timeInterval: 1.0/30.0, repeats: true) { [weak self] _ in
             self?.updateBarsFromAudio()
         }
+        timer.tolerance = 1.0 / 120.0
+        RunLoop.main.add(timer, forMode: .common)
+        animationTimer = timer
     }
     
     private func stopAnimating() {
@@ -104,21 +108,25 @@ class RealTimeAudioSpectrum: NSView {
         // Get real-time magnitudes from AudioTap
         let magnitudes = AudioTap.shared.getSmoothedMagnitudes()
         
-        // Update each bar with its corresponding band magnitude
+        // Silence leaves the bars where they are; no commit needed.
+        guard magnitudes != lastMagnitudes else { return }
+        lastMagnitudes = magnitudes
+
+        // One transaction for all bars instead of one per bar.
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
         for (index, barLayer) in barLayers.enumerated() {
             guard index < magnitudes.count else { break }
             let magnitude = magnitudes[index]
             // Map magnitude (0-1) to scale (0.2 - 1.0) for visual appeal
             let scale = max(0.2, min(1.0, CGFloat(magnitude) * 1.5 + 0.2))
-            
-            CATransaction.begin()
-            CATransaction.setDisableActions(true)
             barLayer.transform = CATransform3DMakeScale(1, scale, 1)
-            CATransaction.commit()
         }
+        CATransaction.commit()
     }
     
     private func resetBars() {
+        lastMagnitudes = []
         for barLayer in barLayers {
             CATransaction.begin()
             CATransaction.setDisableActions(true)

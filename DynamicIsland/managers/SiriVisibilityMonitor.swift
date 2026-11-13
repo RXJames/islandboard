@@ -153,6 +153,9 @@ final class SiriVisibilityMonitor: ObservableObject {
             monitoringTimer = Timer.scheduledTimer(withTimeInterval: currentInterval, repeats: true) { [weak self] _ in
                 self?.checkSiriVisibility()
             }
+            // Polling does not need to be punctual; tolerance lets the system
+            // coalesce this wake-up with others and keep the CPU idle longer.
+            monitoringTimer?.tolerance = currentInterval * 0.2
             monitoringTimer?.tolerance = currentInterval * 0.1
         }
     }

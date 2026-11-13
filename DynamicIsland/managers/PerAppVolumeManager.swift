@@ -194,6 +194,9 @@ final class PerAppVolumeManager: ObservableObject {
         pollTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.refreshApps() }
         }
+        // Polling does not need to be punctual; tolerance lets the system
+        // coalesce this wake-up with others and keep the CPU idle longer.
+        pollTimer?.tolerance = interval * 0.2
     }
 
     // MARK: - App list

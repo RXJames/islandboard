@@ -978,6 +978,9 @@ final class SystemBrightnessController {
                 self.lastEmittedBrightness = max(0, min(1, system))
             }
         }
+        // Polling does not need to be punctual; tolerance lets the system
+        // coalesce this wake-up with others and keep the CPU idle longer.
+        pollTimer?.tolerance = pollInterval * 0.2
     }
 
     deinit {

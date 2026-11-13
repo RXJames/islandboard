@@ -470,6 +470,9 @@ class StatsManager: ObservableObject {
                 self.updateSystemStats()
             }
         }
+        // Polling does not need to be punctual; tolerance lets the system
+        // coalesce this wake-up with others and keep the CPU idle longer.
+        monitoringTimer?.tolerance = interval * 0.2
     }
 
     private func handleUpdateIntervalChange(_ newValue: Double) {

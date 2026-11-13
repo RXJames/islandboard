@@ -263,6 +263,9 @@ class BluetoothAudioManager: ObservableObject {
         pollingTimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { [weak self] _ in
             self?.checkForDeviceChanges()
         }
+        // Polling does not need to be punctual; tolerance lets the system
+        // coalesce this wake-up with others and keep the CPU idle longer.
+        pollingTimer?.tolerance = 3.0 * 0.2
     }
     
     /// Checks for device connection/disconnection changes

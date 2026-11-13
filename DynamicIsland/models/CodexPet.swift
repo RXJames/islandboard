@@ -57,6 +57,7 @@ final class CodexPet: Identifiable {
 
     private let sheet: CGImage
     private var frameCache: [Int: CGImage] = [:]
+    private var failedRows: Set<Int> = []
 
     var idleRow: Int { rowNames.firstIndex(of: "idle") ?? 0 }
 
@@ -97,7 +98,11 @@ final class CodexPet: Identifiable {
 
         guard let sheetURL = resolveSpritesheet(in: directory, manifest: manifest),
               let source = CGImageSourceCreateWithURL(sheetURL as CFURL, nil),
-              let sheet = CGImageSourceCreateImageAtIndex(source, 0, nil)
+              // Not cached: the atlas is only ever read one row at a time
+              // (see `frame(row:index:)`), so keeping its ~11 MB decode
+              // alive would be pure overhead.
+              let sheet = CGImageSourceCreateImageAtIndex(
+                  source, 0, [kCGImageSourceShouldCache: false] as CFDictionary)
         else { return nil }
 
         let slug = directory.lastPathComponent
@@ -125,20 +130,53 @@ final class CodexPet: Identifiable {
 
     // MARK: - Frames
 
-    /// One cropped frame of the atlas. Frames are cached per pet because the
+    /// One frame of the atlas. Frames are cached per pet because the
     /// animation view asks for the next one ~6×/second.
+    ///
+    /// A frame is never a bare `sheet.cropping(to:)`: every such crop keeps
+    /// its own decoded copy of the *whole* atlas once drawn (~11 MB each,
+    /// so a pet that had shown four states held ~260 MB). Instead the row is
+    /// rendered once into a small bitmap and the frames are cut from that.
     func frame(row: Int, index: Int) -> CGImage? {
         guard row >= 0, row < rows, columns > 0 else { return nil }
         let column = ((index % framesPerState) + framesPerState) % framesPerState
         let key = row * 4096 + column
         if let cached = frameCache[key] { return cached }
-        let rect = CGRect(x: column * Self.frameWidth,
-                          y: row * Self.frameHeight,
-                          width: Self.frameWidth,
-                          height: Self.frameHeight)
-        guard let cropped = sheet.cropping(to: rect) else { return nil }
-        frameCache[key] = cropped
-        return cropped
+        guard !failedRows.contains(row) else { return nil }
+        renderRow(row)
+        return frameCache[key]
+    }
+
+    /// Decodes one state row into a standalone bitmap and caches its frames.
+    private func renderRow(_ row: Int) {
+        let rowWidth = framesPerState * Self.frameWidth
+        let rowRect = CGRect(x: 0, y: row * Self.frameHeight,
+                             width: rowWidth, height: Self.frameHeight)
+        guard let strip = sheet.cropping(to: rowRect),
+              let context = CGContext(data: nil,
+                                      width: rowWidth,
+                                      height: Self.frameHeight,
+                                      bitsPerComponent: 8,
+                                      bytesPerRow: 0,
+                                      space: CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB(),
+                                      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+        else {
+            failedRows.insert(row)
+            return
+        }
+        context.interpolationQuality = .none
+        context.draw(strip, in: CGRect(x: 0, y: 0, width: rowWidth, height: Self.frameHeight))
+        guard let rendered = context.makeImage() else {
+            failedRows.insert(row)
+            return
+        }
+        for column in 0..<framesPerState {
+            let rect = CGRect(x: column * Self.frameWidth, y: 0,
+                              width: Self.frameWidth, height: Self.frameHeight)
+            if let frame = rendered.cropping(to: rect) {
+                frameCache[row * 4096 + column] = frame
+            }
+        }
     }
 
     /// Every folder under `~/.codex/pets` that holds a readable pet.

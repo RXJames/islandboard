@@ -128,7 +128,7 @@ final class ImageProcessingService {
             throw ImageProcessingError.backgroundRemovalFailed
         }
         
-        let context = CIContext()
+        let context = NSImage.sharedCIContext
         guard let result = context.createCGImage(output, from: output.extent) else {
             throw ImageProcessingError.backgroundRemovalFailed
         }
@@ -208,7 +208,7 @@ final class ImageProcessingService {
                 return nil
             }
             let ciImage = CIImage(cgImage: cgImage)
-            let context = CIContext()
+            let context = NSImage.sharedCIContext
             let colorSpace = CGColorSpace(name: CGColorSpace.sRGB)!
             let options: [CIImageRepresentationOption: Any] = [
                 CIImageRepresentationOption(rawValue: kCGImageDestinationLossyCompressionQuality as String): quality

@@ -652,7 +652,7 @@ struct LockScreenMusicPanel: View {
 
         guard musicManager.hasActiveSession else { return }
 
-        let artwork = musicManager.albumArt
+        let artwork = musicManager.fullResolutionAlbumArt
         let videoURL = musicManager.videoArtworkURL
 
         withAnimation(.easeInOut(duration: 0.28)) {
@@ -716,6 +716,10 @@ struct LockScreenMusicPanel: View {
     private var progressBar: some View {
         TimelineView(
             .animation(
+                // A progress bar moves a fraction of a point per frame; 30 Hz
+                // matches the in-notch players and halves (or quarters, on
+                // ProMotion) the redraw work.
+                minimumInterval: 1.0 / 30.0,
                 paused: isProgressTimelinePaused
             )
         ) { timeline in
@@ -1110,7 +1114,7 @@ struct LockScreenMusicPanel: View {
 
         // Redraws each frame while playing so the highlight tracks the music
         // rather than stepping a whole line at a time.
-        return TimelineView(.animation(paused: !musicManager.isPlaying)) { timeline in
+        return TimelineView(.animation(minimumInterval: 1.0 / 60.0, paused: !musicManager.isPlaying)) { timeline in
             let progress = musicManager.currentLyricSweepProgress(at: timeline.date)
 
             HStack(spacing: 8) {

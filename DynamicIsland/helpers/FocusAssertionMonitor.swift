@@ -59,6 +59,9 @@ final class FocusAssertionMonitor: ObservableObject {
         pollTimer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.refresh() }
         }
+        // Polling does not need to be punctual; tolerance lets the system
+        // coalesce this wake-up with others and keep the CPU idle longer.
+        pollTimer?.tolerance = 3 * 0.2
     }
 
     func stop() {

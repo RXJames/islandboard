@@ -411,7 +411,56 @@ extension NSImage {
         }
     }
     
+    /// Process-wide Core Image context. Creating a `CIContext` is expensive
+    /// (it sets up a Metal pipeline and caches), so every image helper shares
+    /// this one instead of building its own per call.
+    static let sharedCIContext = CIContext(options: nil)
+
+    private static var brightnessCacheKey: UInt8 = 0
+
+    /// Average luminance (0...1). Memoised on the image: this is read from
+    /// SwiftUI view bodies, where re-rendering the image through Core Image
+    /// on every evaluation showed up as animation hitches.
     func getBrightness() -> CGFloat {
+        if let cached = objc_getAssociatedObject(self, &Self.brightnessCacheKey) as? NSNumber {
+            return CGFloat(cached.doubleValue)
+        }
+        let value = computeBrightness()
+        objc_setAssociatedObject(self, &Self.brightnessCacheKey,
+                                 NSNumber(value: Double(value)), .OBJC_ASSOCIATION_RETAIN)
+        return value
+    }
+
+    /// A bitmap copy whose longest side is at most `maxPixelSide` pixels, or
+    /// `self` when it is already that small. Artwork arrives at up to
+    /// 3000×3000 (36 MB decoded) but is shown at a few hundred pixels.
+    func downscaled(maxPixelSide: CGFloat) -> NSImage {
+        guard let cgImage = self.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
+            return self
+        }
+        let width = CGFloat(cgImage.width)
+        let height = CGFloat(cgImage.height)
+        let longest = max(width, height)
+        guard longest > maxPixelSide, longest > 0 else { return self }
+
+        let scale = maxPixelSide / longest
+        let targetWidth = max(1, Int((width * scale).rounded()))
+        let targetHeight = max(1, Int((height * scale).rounded()))
+        guard let context = CGContext(data: nil,
+                                      width: targetWidth,
+                                      height: targetHeight,
+                                      bitsPerComponent: 8,
+                                      bytesPerRow: 0,
+                                      space: CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB(),
+                                      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+        else { return self }
+        context.interpolationQuality = .high
+        context.draw(cgImage, in: CGRect(x: 0, y: 0, width: targetWidth, height: targetHeight))
+        guard let scaled = context.makeImage() else { return self }
+        return NSImage(cgImage: scaled, size: NSSize(width: targetWidth, height: targetHeight))
+    }
+
+    private func computeBrightness() -> CGFloat {
         guard let cgImage = self.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
             return 0
         }
@@ -426,7 +475,7 @@ extension NSImage {
             return 0
         }
         
-        let context = CIContext(options: nil)
+        let context = Self.sharedCIContext
         
         var bitmap = [UInt8](repeating: 0, count: 4)
         context.render(outputImage,
@@ -444,9 +493,22 @@ extension NSImage {
     /// Renders a fixed pre-blurred texture so the art glow is a plain scaled
     /// image during view transitions instead of a per-frame re-blur.
     func preBlurred(radius: CGFloat) -> NSImage {
-        guard let cgImage = self.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
+        guard let fullImage = self.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
             return self
         }
+
+        // The result is a soft halo with no detail left in it, so blur a
+        // small copy: same look once the view scales it up, a fraction of the
+        // work and ~100x less memory than a full-resolution texture. The
+        // radius shrinks with the image so the blur stays proportionally
+        // identical.
+        let maxSide: CGFloat = 160
+        let small = downscaled(maxPixelSide: maxSide)
+        guard let cgImage = small.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
+            return self
+        }
+        let ratio = CGFloat(cgImage.width) / CGFloat(max(1, fullImage.width))
+        let scaledRadius = max(2, radius * ratio)
 
         let inputImage = CIImage(cgImage: cgImage)
         let filter = CIFilter.gaussianBlur()
@@ -455,15 +517,14 @@ extension NSImage {
         // the edges blend toward transparency instead so the halo has a soft
         // falloff and the view can fade it out radially.
         filter.inputImage = inputImage
-        filter.radius = Float(radius)
+        filter.radius = Float(scaledRadius)
 
         guard let outputImage = filter.outputImage else {
             return self
         }
 
         let extent = inputImage.extent
-        let context = CIContext(options: nil)
-        guard let finalImage = context.createCGImage(outputImage, from: extent) else {
+        guard let finalImage = Self.sharedCIContext.createCGImage(outputImage, from: extent) else {
             return self
         }
 

@@ -33,7 +33,7 @@ struct NotchSystemMonitorView: View {
     @State private var batteryCharging = false
     @State private var processCount = 0
 
-    private let extras = Timer.publish(every: 2, on: .main, in: .common).autoconnect()
+    private let extras = Timer.publish(every: 2, tolerance: 0.4, on: .main, in: .common).autoconnect()
 
     private var columns: [GridItem] {
         [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)]

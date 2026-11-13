@@ -1417,11 +1417,28 @@ class MusicManager: ObservableObject {
         }
     }
 
+    /// Largest side, in pixels, of the artwork kept for the notch and lock
+    /// screen players (the biggest of them draws it at ~300 pt @2x).
+    static let displayArtworkMaxPixelSide: CGFloat = 800
+
+    /// The artwork at its original resolution, decoded on demand for surfaces
+    /// that fill a display. `albumArt` itself is capped for memory.
+    var fullResolutionAlbumArt: NSImage {
+        guard !usingAppIconForArtwork,
+              let data = artworkData,
+              let image = NSImage(data: data)
+        else { return albumArt }
+        return image
+    }
+
     private func updateArtwork(_ artworkData: Data) {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self = self else { return }
 
-            if let artworkImage = NSImage(data: artworkData) {
+            if let decoded = NSImage(data: artworkData) {
+                // Keep only a display-sized bitmap in memory; the original
+                // bytes stay in `artworkData` for `fullResolutionAlbumArt`.
+                let artworkImage = decoded.downscaled(maxPixelSide: Self.displayArtworkMaxPixelSide)
                 DispatchQueue.main.async { [weak self] in
                     self?.usingAppIconForArtwork = false
                     self?.updateAlbumArt(newAlbumArt: artworkImage)

@@ -41,30 +41,34 @@ struct RealTimeWaveformScrubberView: View {
     
     private func startTimer() {
         timer?.invalidate()
-        let newTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60.0, repeats: true) { _ in
+        // 30 Hz with the smoothing below is visually indistinguishable from
+        // the old 60 Hz + per-tick implicit animation, at well under half the
+        // main-thread work (no animation transaction, half the path rebuilds).
+        let newTimer = Timer(timeInterval: 1.0 / 30.0, repeats: true) { _ in
             let tapMagnitudes = AudioTap.shared.getSmoothedMagnitudes()
             let barCount = Defaults[.visualizerBarCount]
-            var newMags: [Float] = []
-            if tapMagnitudes.count >= barCount {
-                newMags = Array(tapMagnitudes.prefix(barCount))
-            } else {
-                newMags = tapMagnitudes
-            }
-            
+            let newMags = tapMagnitudes.count >= barCount
+                ? Array(tapMagnitudes.prefix(barCount))
+                : tapMagnitudes
+
             var smoothedMags = [Float](repeating: 0.1, count: newMags.count)
+            var changed = newMags.count != magnitudes.count
             for i in 0..<newMags.count {
                 if i < magnitudes.count {
-                    smoothedMags[i] = magnitudes[i] * 0.85 + newMags[i] * 0.15
+                    // 0.72/0.28 per 30 Hz step == 0.85/0.15 per 60 Hz step.
+                    smoothedMags[i] = magnitudes[i] * 0.72 + newMags[i] * 0.28
+                    if abs(smoothedMags[i] - magnitudes[i]) > 0.002 { changed = true }
                 } else {
                     smoothedMags[i] = newMags[i]
                 }
             }
-            
-            // Smoothly animate the path update
-            withAnimation(.linear(duration: 1.0 / 60.0)) {
-                magnitudes = smoothedMags
-            }
+
+            // Silence / paused playback settles to a constant shape; skip the
+            // state write so SwiftUI has nothing to redraw.
+            guard changed else { return }
+            magnitudes = smoothedMags
         }
+        newTimer.tolerance = 1.0 / 120.0
         RunLoop.main.add(newTimer, forMode: .common)
         timer = newTimer
     }

@@ -465,6 +465,9 @@ class ScreenRecordingManager: ObservableObject {
                 self?.updateDuration()
             }
         }
+        // Polling does not need to be punctual; tolerance lets the system
+        // coalesce this wake-up with others and keep the CPU idle longer.
+        durationTimer?.tolerance = 1 * 0.2
 
         screenRecordingDebugLog("Started duration tracking")
     }

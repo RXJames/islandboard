@@ -164,6 +164,9 @@ final class ControlCenterState: ObservableObject {
         pollTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.refreshPolledState() }
         }
+        // Polling does not need to be punctual; tolerance lets the system
+        // coalesce this wake-up with others and keep the CPU idle longer.
+        pollTimer?.tolerance = 2.0 * 0.2
         refreshPolledState()
     }
 

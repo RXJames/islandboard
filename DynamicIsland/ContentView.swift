@@ -43,11 +43,20 @@ struct ContentView: View {
     @EnvironmentObject var webcamManager: WebcamManager
 
     @ObservedObject var coordinator = DynamicIslandViewCoordinator.shared
-    @ObservedObject var musicManager = MusicManager.shared
+    // Deliberately not `@ObservedObject`: MusicManager publishes ~33
+    // properties (playback position, lyric index, glow texture, ...) and this
+    // root view reads 11 of them. Observing the whole object re-evaluated the
+    // entire notch on every one of those writes, often mid-animation.
+    // `musicObservation` forwards only the properties read here.
+    let musicManager = MusicManager.shared
+    @StateObject private var musicObservation = RootMusicObservation()
     @ObservedObject var timerManager = TimerManager.shared
     @ObservedObject var reminderManager = ReminderLiveActivityManager.shared
     @ObservedObject var batteryModel = BatteryStatusViewModel.shared
-    @ObservedObject var statsManager = StatsManager.shared
+    // Only called into (never read) from this view, so not observed: its ~30
+    // published metrics would otherwise invalidate the whole notch on every
+    // stats tick while the Stats tab is open.
+    let statsManager = StatsManager.shared
     @ObservedObject var recordingManager = ScreenRecordingManager.shared
     @ObservedObject var privacyManager = PrivacyIndicatorManager.shared
     @ObservedObject var doNotDisturbManager = DoNotDisturbManager.shared
@@ -1864,7 +1873,10 @@ struct ContentView: View {
                 .frame(width: 50, alignment: .center)
                 .matchedGeometryEffect(id: "spectrum", in: albumArtNamespace)
                 .mask {
-                    AudioVisualizerView(isPlaying: $musicManager.isPlaying)
+                    AudioVisualizerView(isPlaying: Binding(
+                        get: { musicManager.isPlaying },
+                        set: { musicManager.isPlaying = $0 }
+                    ))
                         .frame(width: width, height: 12)
                 }
         }
@@ -3487,5 +3499,45 @@ struct FullScreenDropDelegate: DropDelegate {
         isTargeted = false
         onDrop()
         return true
+    }
+}
+
+// MARK: - Narrowed MusicManager observation
+
+/// Re-publishes only the `MusicManager` properties `ContentView` reads.
+///
+/// Each `@Published` projection emits from `willSet`, synchronously and inside
+/// whatever `withAnimation` transaction the manager is using, so forwarding it
+/// to `objectWillChange` invalidates the view exactly as observing the manager
+/// directly did - minus the writes to unrelated properties and the writes
+/// that do not change the value.
+///
+/// When `ContentView` starts reading another `musicManager` property in its
+/// body, add it here or the view will not refresh for it.
+@MainActor
+final class RootMusicObservation: ObservableObject {
+    private var cancellables = Set<AnyCancellable>()
+
+    init() {
+        let manager = MusicManager.shared
+        track(manager.$isPlaying)
+        track(manager.$isPlayerIdle)
+        track(manager.$songTitle)
+        track(manager.$artistName)
+        track(manager.$albumArt)
+        track(manager.$avgColor)
+        track(manager.$bundleIdentifier)
+        track(manager.$lyricsAvailability)
+        track(manager.$skipGesturePulse)
+        track(manager.$isCurrentTrackExplicit)
+        track(manager.$flipAngle)
+    }
+
+    private func track<Value: Equatable>(_ publisher: Published<Value>.Publisher) {
+        publisher
+            .removeDuplicates()
+            .dropFirst()
+            .sink { [weak self] _ in self?.objectWillChange.send() }
+            .store(in: &cancellables)
     }
 }

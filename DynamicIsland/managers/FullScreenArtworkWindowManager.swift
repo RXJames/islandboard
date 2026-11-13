@@ -411,8 +411,11 @@ final class FullScreenArtworkWindowManager: ObservableObject {
     private func observeArtworkChanges() {
         artworkCacheCancellable = MusicManager.shared.$albumArt
             .debounce(for: .milliseconds(180), scheduler: DispatchQueue.main)
-            .sink { [weak self] newArt in
+            .sink { [weak self] _ in
                 guard let self else { return }
+                // `albumArt` is capped for the notch; the wallpaper needs the
+                // original pixels.
+                let newArt = MusicManager.shared.fullResolutionAlbumArt
                 guard let fingerprint = self.imageFingerprint(for: newArt) else { return }
                 guard fingerprint != self.cachedArtworkFingerprint else { return }
                 let url = self.artworkCacheFileURL(for: fingerprint)
@@ -624,7 +627,7 @@ final class FullScreenArtworkWindowManager: ObservableObject {
         guard let screen = NSScreen.main else { return }
 
         applyPresentation(
-            artwork: MusicManager.shared.albumArt,
+            artwork: MusicManager.shared.fullResolutionAlbumArt,
             videoURL: isLiveWallpaperAllowed ? MusicManager.shared.videoArtworkURL : nil,
             allowLiveWallpaper: isLiveWallpaperAllowed,
             on: screen,
@@ -858,7 +861,7 @@ final class FullScreenArtworkWindowManager: ObservableObject {
                 ]
             )
 
-        let context = CIContext(options: nil)
+        let context = NSImage.sharedCIContext
         guard let cgImage = context.createCGImage(blurredImage, from: targetRect) else { return nil }
 
         let renderedImage = NSImage(cgImage: cgImage, size: NSSize(width: targetPixelSize.width, height: targetPixelSize.height))

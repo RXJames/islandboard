@@ -378,6 +378,9 @@ class ClipboardManager: ObservableObject {
         timer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
             self?.checkClipboard()
         }
+        // Polling does not need to be punctual; tolerance lets the system
+        // coalesce this wake-up with others and keep the CPU idle longer.
+        timer?.tolerance = 0.5 * 0.2
     }
     
     func stopMonitoring() {
