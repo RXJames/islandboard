@@ -156,12 +156,27 @@ struct NotchHomeWeatherStrip: View {
         }
         .contentShape(Rectangle())
         .onTapGesture {
-            guard isForecastUnavailable else { return }
-            SettingsWindowController.shared.showWeatherSettings()
+            if isForecastUnavailable {
+                SettingsWindowController.shared.showWeatherSettings()
+            } else {
+                openSystemWeather()
+            }
         }
-        .help(isForecastUnavailable ? "Open Weather settings" : "")
+        .help(isForecastUnavailable ? "Open Weather settings" : "Open Weather")
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(isForecastUnavailable ? "Home weather unavailable. Open Weather settings" : "Home weather forecast")
+        .accessibilityLabel(isForecastUnavailable ? "Home weather unavailable. Open Weather settings" : "Home weather forecast. Open Weather")
+        .accessibilityAddTraits(.isButton)
+    }
+
+    /// Brings up the system Weather app. It ships with macOS 13+, but the
+    /// user can remove it, so fall back to the app's own Weather settings
+    /// rather than doing nothing on a click.
+    private func openSystemWeather() {
+        guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.weather") else {
+            SettingsWindowController.shared.showWeatherSettings()
+            return
+        }
+        NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration())
     }
 
     private func forecast(_ snapshot: LockScreenWeatherSnapshot) -> some View {
