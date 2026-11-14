@@ -35,6 +35,7 @@ struct IdleAnimationsSettingsSection: View {
     @Default(.showNotHumanFace) var showNotHumanFace
     @Default(.idlePetWalking) var idlePetWalking
     @Default(.idlePetSizeScale) var idlePetSizeScale
+    @Default(.idlePetMenuBarOnly) var idlePetMenuBarOnly
     
     @State private var showingFilePicker = false
     @State private var showingCodexPetPicker = false
@@ -132,6 +133,16 @@ struct IdleAnimationsSettingsSection: View {
                         }
                     }
                     .disabled(selectedIdleAnimation == nil)
+
+                    Toggle(isOn: $idlePetMenuBarOnly) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Keep pet on the menu bar")
+                            Text("On: a pet dragged elsewhere hops back to the menu bar. Off: it keeps walking wherever you drop it, and returns to patrolling when dropped on the menu bar.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .disabled(selectedIdleAnimation == nil || !idlePetWalking)
 
                     VStack(alignment: .leading, spacing: 4) {
                         HStack {

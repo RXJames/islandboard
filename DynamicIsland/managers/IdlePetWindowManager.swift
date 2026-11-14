@@ -56,6 +56,57 @@ enum IdlePetGeometry {
         return leftMax - leftMin >= petSize ? leftMin...leftMax : nil
     }
 
+    /// True when a dropped pet belongs to the menu bar again: its centre sits
+    /// in the strip under the top edge of the notch's screen. The strip is
+    /// padded by half a pet so a drop that only roughly lines up with the
+    /// bar still counts - nobody releases a 30 pt sprite pixel-perfectly.
+    static func isInMenuBarZone(petFrame: CGRect,
+                                screenFrame: CGRect,
+                                notchHeight: CGFloat) -> Bool {
+        guard petFrame.midX >= screenFrame.minX, petFrame.midX <= screenFrame.maxX else { return false }
+        let stripHeight = max(notchHeight, 24) + petFrame.height / 2
+        return petFrame.midY >= screenFrame.maxY - stripHeight && petFrame.midY <= screenFrame.maxY + petFrame.height
+    }
+
+    /// The band a free-roaming pet (dropped away from the menu bar) walks
+    /// along: the full width of the screen it was dropped on. Nil when the
+    /// screen is too narrow to walk on.
+    static func freeSegment(screenMinX: CGFloat,
+                            screenMaxX: CGFloat,
+                            petSize: CGFloat,
+                            margin: CGFloat = 8) -> ClosedRange<CGFloat>? {
+        let lower = screenMinX + margin
+        let upper = screenMaxX - petSize - margin
+        return upper - lower >= petSize ? lower...upper : nil
+    }
+
+    /// Keeps a free-roaming pet fully on its screen vertically.
+    static func clampedFreeY(_ y: CGFloat,
+                             screenMinY: CGFloat,
+                             screenMaxY: CGFloat,
+                             petSize: CGFloat) -> CGFloat {
+        let upper = max(screenMinY, screenMaxY - petSize)
+        return min(max(y, screenMinY), upper)
+    }
+
+    /// Where a pet returning to the menu bar lands: on the notch's screen
+    /// and beside the notch, never on top of the camera cutout.
+    static func menuBarLandingX(from x: CGFloat,
+                                screenMinX: CGFloat,
+                                screenMaxX: CGFloat,
+                                notchMinX: CGFloat,
+                                notchMaxX: CGFloat,
+                                petSize: CGFloat,
+                                margin: CGFloat = 8) -> CGFloat {
+        var landing = min(max(x, screenMinX + margin), screenMaxX - petSize - margin)
+        if landing > notchMinX - petSize, landing < notchMaxX {
+            landing = landing + petSize / 2 < (notchMinX + notchMaxX) / 2
+                ? notchMinX - petSize
+                : notchMaxX
+        }
+        return landing
+    }
+
     /// Seconds for one loop of a Lottie JSON (`ip`/`op`/`fr` divided by the
     /// user's speed multiplier). Only local files are parsed; remote URLs
     /// fall back to 3 s rather than blocking the main thread on a fetch.
@@ -112,16 +163,6 @@ private struct IdlePetWindowContent: View {
     }
 }
 
-extension Notification.Name {
-    /// Brackets one user drag of the walking pet, from mouse-down to
-    /// mouse-up. The manager holds its "dragging" state for exactly this
-    /// span instead of guessing from `windowDidMove` timing, which used to
-    /// flip the pet between the jumping and running rows mid-drag (it read
-    /// as the pet blinking).
-    static let idlePetDragBegan = Notification.Name("AtollIdlePetDragBegan")
-    static let idlePetDragEnded = Notification.Name("AtollIdlePetDragEnded")
-}
-
 /// Borderless pet windows are not key by default; `performDrag(with:)` and
 /// first-click delivery are unreliable unless the window can become key.
 private final class IdlePetWindow: NSWindow {
@@ -138,16 +179,34 @@ private final class IdlePetDragView: NSView {
 
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
+    /// Mouse and window positions at mouse-down, in screen coordinates.
+    private var dragStart: (mouse: NSPoint, origin: NSPoint)?
+
+    // The drag is tracked here by hand rather than with
+    // `NSWindow.performDrag(with:)`. performDrag hands the drag to the window
+    // server and returns immediately, so there is no way to know when the
+    // user lets go: "drag ended" used to fire on mouse-DOWN. That is why a
+    // dropped pet first froze wherever it was (the manager believed the drag
+    // was long over), and why a pet that keeps walking would be yanked back
+    // to its lane mid-drag. mouseDown / mouseDragged / mouseUp bracket the
+    // drag exactly.
     override func mouseDown(with event: NSEvent) {
-        // A parked pet is not necessarily the key window (and the app can be
-        // inactive when the user grabs it again). Make it key first so
-        // NSWindow.performDrag reliably starts instead of silently ignoring
-        // the mouseDown.
-        NSApp.activate(ignoringOtherApps: true)
-        window?.makeKeyAndOrderFront(nil)
-        NotificationCenter.default.post(name: .idlePetDragBegan, object: nil)
-        window?.performDrag(with: event)
-        NotificationCenter.default.post(name: .idlePetDragEnded, object: nil)
+        guard let window else { return }
+        dragStart = (NSEvent.mouseLocation, window.frame.origin)
+        IdlePetWindowManager.shared.userDragBegan()
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        guard let window, let dragStart else { return }
+        let mouse = NSEvent.mouseLocation
+        window.setFrameOrigin(NSPoint(x: dragStart.origin.x + mouse.x - dragStart.mouse.x,
+                                      y: dragStart.origin.y + mouse.y - dragStart.mouse.y))
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        guard dragStart != nil else { return }
+        dragStart = nil
+        IdlePetWindowManager.shared.userDragEnded()
     }
 
     override func hitTest(_ point: NSPoint) -> NSView? {
@@ -206,6 +265,17 @@ final class IdlePetWindowManager: NSObject, ObservableObject, NSWindowDelegate {
         var notchRect: CGRect?
         /// Notch panel currently expanded; the pet steps out of the way.
         var notchOpen = false
+        /// When true a pet dropped away from the menu bar hops back onto it;
+        /// when false it keeps roaming wherever it was dropped.
+        var menuBarOnly = false
+    }
+
+    /// Where the pet is walking.
+    private enum Lane: Equatable {
+        /// Along the menu bar of the notch's screen, beside the notch.
+        case menuBar
+        /// Along a horizontal line on the screen the user dropped it on.
+        case free(screenFrame: CGRect, y: CGFloat)
     }
 
     private enum Mode {
@@ -227,7 +297,6 @@ final class IdlePetWindowManager: NSObject, ObservableObject, NSWindowDelegate {
     private var running = false
     private var screenLocked = false
     private var lockObservers: [NSObjectProtocol] = []
-    private var dragObservers: [NSObjectProtocol] = []
     private var dir: CGFloat = 1
     /// Shared with the hosted view; updated instead of rebuilding rootView.
     private let visual = IdlePetVisualState()
@@ -236,10 +305,13 @@ final class IdlePetWindowManager: NSObject, ObservableObject, NSWindowDelegate {
     private var actionEnd = Date.distantPast
     private var dragging = false
     private var programmaticMove = false
-    /// A pet dropped away from the notch stays exactly where it was released
-    /// instead of being clamped back to the patrol lane and snapping to the
-    /// menu bar in the next tick.
-    private var parkedAfterDrag = false
+    /// The pet keeps walking wherever it is: on the menu bar, or - after
+    /// being dropped elsewhere with "menu bar only" off - along the line it
+    /// was dropped on. (It used to freeze where it was released and never
+    /// move again, even when dragged back onto the menu bar.)
+    private var lane: Lane = .menuBar
+    /// True during the short hop back to the menu bar.
+    private var returning = false
     private var mode: Mode = .patrolling
     /// True while the pet belongs on the notch face (intro loops, resting
     /// after an absorb, or walking disabled); walking hides the face pet.
@@ -266,11 +338,16 @@ final class IdlePetWindowManager: NSObject, ObservableObject, NSWindowDelegate {
             return
         }
         let geometryChanged = newInputs.notchRect != inputs.notchRect || newInputs.scale != inputs.scale
+        let confinedToMenuBar = newInputs.menuBarOnly && !inputs.menuBarOnly
         inputs = newInputs
         buildIfNeeded()
         if geometryChanged {
             relayoutSize()
             clampIntoSegment()
+        }
+        if confinedToMenuBar, running, mode == .patrolling, !dragging, lane != .menuBar {
+            // The setting was just switched on with the pet out roaming.
+            resumeMenuBarPatrol(fromX: window?.frame.minX ?? x, animated: true)
         }
         if !running {
             start()
@@ -291,7 +368,8 @@ final class IdlePetWindowManager: NSObject, ObservableObject, NSWindowDelegate {
         settleWork?.cancel()
         settleWork = nil
         dragging = false
-        parkedAfterDrag = false
+        returning = false
+        lane = .menuBar
         mode = .patrolling
         if visual.spriteState != "idle" { visual.spriteState = "idle" }
         if petShownInNotchFace { petShownInNotchFace = false }
@@ -310,15 +388,6 @@ final class IdlePetWindowManager: NSObject, ObservableObject, NSWindowDelegate {
         scheduleTick(walking: false)
         // The pet rides in the notch's max-level SkyLight space, so it must
         // not linger over the login window while the screen is locked.
-        if dragObservers.isEmpty {
-            let center = NotificationCenter.default
-            dragObservers.append(center.addObserver(forName: .idlePetDragBegan, object: nil, queue: .main) { [weak self] _ in
-                Task { @MainActor in self?.userDragBegan() }
-            })
-            dragObservers.append(center.addObserver(forName: .idlePetDragEnded, object: nil, queue: .main) { [weak self] _ in
-                Task { @MainActor in self?.userDragEnded() }
-            })
-        }
         if lockObservers.isEmpty {
             let center = DistributedNotificationCenter.default()
             lockObservers.append(center.addObserver(forName: .init("com.apple.screenIsLocked"), object: nil, queue: .main) { [weak self] _ in
@@ -352,7 +421,9 @@ final class IdlePetWindowManager: NSObject, ObservableObject, NSWindowDelegate {
             panel.level = .statusBar
         }
         panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle, .fullScreenAuxiliary]
-        panel.isMovableByWindowBackground = true
+        // Dragging is handled by IdlePetDragView; a window-server drag on
+        // top of it would fight the manual one.
+        panel.isMovableByWindowBackground = false
         panel.ignoresMouseEvents = false
         panel.acceptsMouseMovedEvents = true
         panel.delegate = self
@@ -408,12 +479,8 @@ final class IdlePetWindowManager: NSObject, ObservableObject, NSWindowDelegate {
     }
 
     private func placeWindow() {
-        guard let window, let screen, let notch = inputs.notchRect else { return }
+        guard let window, let y = laneY() else { return }
         let size = petSize
-        // Bottom-aligned with the notch face, exactly where the in-face pet
-        // sits: when the window slides out its vertical position never
-        // changes, so the pet looks like it walks along the notch's floor.
-        let y = screen.frame.maxY - notch.height
         programmaticMove = true
         if window.frame.size == CGSize(width: size, height: size) {
             // Only the origin changes while walking; moving the window is far
@@ -426,8 +493,48 @@ final class IdlePetWindowManager: NSObject, ObservableObject, NSWindowDelegate {
         programmaticMove = false
     }
 
+    /// Vertical position of the lane the pet is walking in.
+    private func laneY() -> CGFloat? {
+        switch lane {
+        case .menuBar:
+            guard let screen, let notch = inputs.notchRect else { return nil }
+            // Bottom-aligned with the notch face, exactly where the in-face
+            // pet sits: when the window slides out its vertical position
+            // never changes, so the pet looks like it walks along the
+            // notch's floor.
+            return screen.frame.maxY - notch.height
+        case .free(let screenFrame, let y):
+            return IdlePetGeometry.clampedFreeY(y,
+                                                screenMinY: screenFrame.minY,
+                                                screenMaxY: screenFrame.maxY,
+                                                petSize: petSize)
+        }
+    }
+
+    /// Horizontal band of the lane the pet is walking in.
+    private func laneSegment() -> ClosedRange<CGFloat>? {
+        switch lane {
+        case .menuBar:
+            return currentSegment()
+        case .free(let screenFrame, _):
+            return IdlePetGeometry.freeSegment(screenMinX: screenFrame.minX,
+                                               screenMaxX: screenFrame.maxX,
+                                               petSize: petSize)
+        }
+    }
+
+    /// A free lane dies with its display (unplugged, rearranged); the pet
+    /// then goes home to the menu bar instead of walking off-screen.
+    private func validateLane() {
+        guard case .free(let screenFrame, _) = lane else { return }
+        if !NSScreen.screens.contains(where: { $0.frame == screenFrame }) {
+            resumeMenuBarPatrol(fromX: x, animated: false)
+        }
+    }
+
     private func clampIntoSegment() {
-        guard let segment = currentSegment() else { return }
+        validateLane()
+        guard let segment = laneSegment() else { return }
         x = min(max(x, segment.lowerBound), segment.upperBound)
         placeWindow()
     }
@@ -435,7 +542,8 @@ final class IdlePetWindowManager: NSObject, ObservableObject, NSWindowDelegate {
     // MARK: Intro: 3 idle loops inside the notch, then walk out
 
     private func beginIntro() {
-        parkedAfterDrag = false
+        lane = .menuBar
+        returning = false
         introWork?.cancel()
         reappearWork?.cancel()
         if !petShownInNotchFace { petShownInNotchFace = true }
@@ -452,7 +560,8 @@ final class IdlePetWindowManager: NSObject, ObservableObject, NSWindowDelegate {
 
     private func beginWalk() {
         introWork = nil
-        parkedAfterDrag = false
+        lane = .menuBar
+        returning = false
         guard running, mode == .patrolling, let segment = currentSegment(), let notch = inputs.notchRect else { return }
         if screenLocked || inputs.notchOpen {
             // Intro finished while the screen is locked or the notch is
@@ -526,21 +635,18 @@ final class IdlePetWindowManager: NSObject, ObservableObject, NSWindowDelegate {
     /// Runs one step of the patrol. Returns true while the pet is moving and
     /// therefore needs the fast tick.
     private func advance() -> Bool {
-        guard running, mode == .patrolling, !dragging, introWork == nil else { return false }
+        guard running, mode == .patrolling, !dragging, !returning, introWork == nil else { return false }
         // An expanded notch owns the menu-bar area; the pet waits it out
-        // without teleporting. Same while the screen is locked.
-        if inputs.notchOpen || screenLocked {
+        // without teleporting (a pet roaming elsewhere is not in its way).
+        // Nothing is shown while the screen is locked.
+        if screenLocked || (inputs.notchOpen && lane == .menuBar) {
             if window?.isVisible == true { window?.orderOut(nil) }
-            return false
-        }
-        if parkedAfterDrag {
-            if window?.isVisible == false { window?.orderFrontRegardless() }
-            joinNotchSpace()
             return false
         }
         if window?.isVisible == false { window?.orderFrontRegardless() }
         joinNotchSpace()  // cheap: only acts if a layout refresh dropped us
-        guard let segment = currentSegment() else { return false }
+        validateLane()
+        guard !returning, let segment = laneSegment() else { return false }
         let now = Date()
         if now >= actionEnd {
             standing.toggle()
@@ -585,7 +691,7 @@ final class IdlePetWindowManager: NSObject, ObservableObject, NSWindowDelegate {
     /// 30 Hz.
     private func updateSpriteState() {
         let next: String
-        if dragging {
+        if dragging || returning {
             next = "jumping"
         } else if running, mode == .patrolling, introWork == nil, !standing {
             next = dir >= 0 ? "running-right" : "running-left"
@@ -606,46 +712,130 @@ final class IdlePetWindowManager: NSObject, ObservableObject, NSWindowDelegate {
 
     // MARK: User drag (from the pet window's drag surface)
 
-    private func userDragBegan() {
+    fileprivate func userDragBegan() {
         settleWork?.cancel()
         settleWork = nil
         reappearWork?.cancel()
         reappearWork = nil
         introWork?.cancel()
         introWork = nil
-        parkedAfterDrag = false
+        returning = false
         dragging = true
         updateSpriteState()
     }
 
-    private func userDragEnded() {
+    fileprivate func userDragEnded() {
         guard dragging else { return }
         dragging = false
-        if let window, let notch = inputs.notchRect {
-            // Absorb only when the pet's centre is actually over the notch.
-            // The old frame-intersection test fired for a pet still beside
-            // the notch (the notch is much wider than the pet), so a short
-            // horizontal drag read as "it jumped back".
-            let center = CGPoint(x: window.frame.midX, y: window.frame.midY)
-            if notch.insetBy(dx: -4, dy: -4).contains(center) {
-                absorbIntoNotch()
-                return
+        guard let window, let notch = inputs.notchRect else {
+            updateSpriteState()
+            return
+        }
+        let frame = window.frame
+        // Absorb only when the pet's centre is actually over the notch.
+        // The old frame-intersection test fired for a pet still beside
+        // the notch (the notch is much wider than the pet), so a short
+        // horizontal drag read as "it jumped back".
+        let center = CGPoint(x: frame.midX, y: frame.midY)
+        if notch.insetBy(dx: -4, dy: -4).contains(center) {
+            absorbIntoNotch()
+            return
+        }
+        if let notchScreen = screen,
+           IdlePetGeometry.isInMenuBarZone(petFrame: frame,
+                                           screenFrame: notchScreen.frame,
+                                           notchHeight: notch.height) {
+            // Dropped back onto the menu bar: carry on patrolling from here.
+            resumeMenuBarPatrol(fromX: frame.minX, animated: false)
+            return
+        }
+        guard !inputs.menuBarOnly,
+              let dropScreen = NSScreen.screens.first(where: { $0.frame.contains(center) })
+        else {
+            // Confined to the menu bar (or dropped off every display).
+            resumeMenuBarPatrol(fromX: frame.minX, animated: true)
+            return
+        }
+        // Free roaming: keep strolling along the line it was dropped on.
+        let y = IdlePetGeometry.clampedFreeY(frame.minY,
+                                             screenMinY: dropScreen.frame.minY,
+                                             screenMaxY: dropScreen.frame.maxY,
+                                             petSize: petSize)
+        lane = .free(screenFrame: dropScreen.frame, y: y)
+        x = frame.minX
+        beginStroll()
+        placeWindow()
+        scheduleTick(walking: true)
+    }
+
+    /// Starts a fresh stroll in the current lane, heading into its band when
+    /// the pet stands outside it.
+    private func beginStroll() {
+        if let segment = laneSegment() {
+            if x < segment.lowerBound { dir = 1 } else if x > segment.upperBound { dir = -1 }
+        }
+        standing = false
+        actionEnd = Date().addingTimeInterval(Double.random(in: Self.strollRange))
+        setFacing()
+    }
+
+    /// Puts the pet back on the menu bar at (roughly) the given x and lets it
+    /// patrol again. `animated` hops it there instead of teleporting.
+    private func resumeMenuBarPatrol(fromX: CGFloat, animated: Bool) {
+        lane = .menuBar
+        settleWork?.cancel()
+        settleWork = nil
+        guard let window, let notchScreen = screen, let notch = inputs.notchRect, let y = laneY() else {
+            returning = false
+            return
+        }
+        let size = petSize
+        x = IdlePetGeometry.menuBarLandingX(from: fromX,
+                                            screenMinX: notchScreen.frame.minX,
+                                            screenMaxX: notchScreen.frame.maxX,
+                                            notchMinX: notch.minX,
+                                            notchMaxX: notch.maxX,
+                                            petSize: size)
+        guard animated, window.isVisible else {
+            returning = false
+            beginStroll()
+            placeWindow()
+            if running { scheduleTick(walking: true) }
+            return
+        }
+        returning = true
+        updateSpriteState()
+        let duration = 0.35
+        programmaticMove = true
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = duration
+            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            window.animator().setFrame(NSRect(x: x, y: y, width: size, height: size), display: true)
+        }
+        programmaticMove = false
+        let work = DispatchWorkItem { [weak self] in
+            Task { @MainActor in
+                guard let self, self.returning else { return }
+                self.returning = false
+                self.settleWork = nil
+                guard self.running, self.mode == .patrolling, !self.dragging else {
+                    self.updateSpriteState()
+                    return
+                }
+                self.beginStroll()
+                self.placeWindow()
+                self.scheduleTick(walking: true)
             }
         }
-        parkedAfterDrag = true
-        standing = true
-        actionEnd = .distantFuture
-        x = window?.frame.minX ?? x
-        updateSpriteState()
-        // Deliberately do not call placeWindow(): preserve both the dropped
-        // x and y. The next tick keeps the window there until the user starts
-        // another drag or hides the pet.
+        settleWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + duration + 0.05, execute: work)
     }
 
     private func absorbIntoNotch() {
         mode = .absorbed
         dragging = false
-        parkedAfterDrag = false
+        returning = false
+        lane = .menuBar
         if visual.spriteState != "idle" { visual.spriteState = "idle" }
         settleWork?.cancel()
         settleWork = nil

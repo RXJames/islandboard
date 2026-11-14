@@ -92,4 +92,46 @@ final class IdlePetGeometryTests: XCTestCase {
                                                 petSize: 30)
         XCTAssertNil(seg)
     }
+
+    // MARK: menu bar zone / free roaming
+
+    private let screen = CGRect(x: 0, y: 0, width: 1512, height: 982)
+
+    func testDropOnMenuBarCountsAsMenuBar() {
+        // Sitting in the bar, and released a little below it.
+        let inBar = CGRect(x: 900, y: 982 - 32, width: 32, height: 32)
+        let slightlyLow = CGRect(x: 900, y: 982 - 32 - 12, width: 32, height: 32)
+        XCTAssertTrue(IdlePetGeometry.isInMenuBarZone(petFrame: inBar, screenFrame: screen, notchHeight: 32))
+        XCTAssertTrue(IdlePetGeometry.isInMenuBarZone(petFrame: slightlyLow, screenFrame: screen, notchHeight: 32))
+    }
+
+    func testDropAwayFromMenuBarIsNotMenuBar() {
+        let midScreen = CGRect(x: 900, y: 500, width: 32, height: 32)
+        let otherDisplay = CGRect(x: 2000, y: 982 - 32, width: 32, height: 32)
+        XCTAssertFalse(IdlePetGeometry.isInMenuBarZone(petFrame: midScreen, screenFrame: screen, notchHeight: 32))
+        XCTAssertFalse(IdlePetGeometry.isInMenuBarZone(petFrame: otherDisplay, screenFrame: screen, notchHeight: 32))
+    }
+
+    func testFreeSegmentSpansTheScreen() {
+        let segment = IdlePetGeometry.freeSegment(screenMinX: 0, screenMaxX: 1512, petSize: 32)
+        XCTAssertEqual(segment, 8...(1512 - 32 - 8))
+        XCTAssertNil(IdlePetGeometry.freeSegment(screenMinX: 0, screenMaxX: 60, petSize: 32))
+    }
+
+    func testFreeYStaysOnScreen() {
+        XCTAssertEqual(IdlePetGeometry.clampedFreeY(-50, screenMinY: 0, screenMaxY: 982, petSize: 32), 0)
+        XCTAssertEqual(IdlePetGeometry.clampedFreeY(5000, screenMinY: 0, screenMaxY: 982, petSize: 32), 950)
+        XCTAssertEqual(IdlePetGeometry.clampedFreeY(400, screenMinY: 0, screenMaxY: 982, petSize: 32), 400)
+    }
+
+    func testMenuBarLandingNeverCoversTheNotch() {
+        let notchMinX: CGFloat = 656, notchMaxX: CGFloat = 856
+        for start in stride(from: CGFloat(-500), through: 2500, by: 37) {
+            let x = IdlePetGeometry.menuBarLandingX(from: start, screenMinX: 0, screenMaxX: 1512,
+                                                    notchMinX: notchMinX, notchMaxX: notchMaxX, petSize: 32)
+            XCTAssertGreaterThanOrEqual(x, 0)
+            XCTAssertLessThanOrEqual(x + 32, 1512)
+            XCTAssertFalse(x + 32 > notchMinX && x < notchMaxX, "landed on the notch from \(start): \(x)")
+        }
+    }
 }

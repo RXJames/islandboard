@@ -1045,6 +1045,9 @@ extension Defaults.Keys {
     static let selectedIdleAnimation = Key<CustomIdleAnimation?>("selectedIdleAnimation", default: nil)
     static let idlePetWalking = Key<Bool>("idlePetWalking", default: false)
     static let idlePetSizeScale = Key<CGFloat>("idlePetSizeScale", default: 1.0)
+    /// On: a pet dragged off the menu bar hops back onto it. Off: it keeps
+    /// roaming wherever it was dropped.
+    static let idlePetMenuBarOnly = Key<Bool>("idlePetMenuBarOnly", default: false)
     static let animationTransformOverrides = Key<[String: AnimationTransformConfig]>("animationTransformOverrides", default: [:])
     static let tileShowLabels = Key<Bool>("tileShowLabels", default: false)
     static let showCalendar = Key<Bool>("showCalendar", default: true)

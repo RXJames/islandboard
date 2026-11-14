@@ -288,6 +288,7 @@ struct ContentView: View {
     @Default(.showNotHumanFace) var showNotHumanFace
     @Default(.idlePetWalking) private var idlePetWalking
     @Default(.idlePetSizeScale) private var idlePetSizeScale
+    @Default(.idlePetMenuBarOnly) private var idlePetMenuBarOnly
     @Default(.selectedIdleAnimation) private var selectedIdleAnimation
     @ObservedObject private var idlePet = IdlePetWindowManager.shared
     @Default(.useModernCloseAnimation) var useModernCloseAnimation
@@ -1076,6 +1077,12 @@ struct ContentView: View {
             .onChange(of: idlePetSizeScale) { _, _ in
                 syncIdlePet()
             }
+            .onChange(of: idlePetMenuBarOnly) { _, _ in
+                syncIdlePet()
+            }
+            .onChange(of: showNotHumanFace) { _, _ in
+                syncIdlePet()
+            }
             .onChange(of: selectedIdleAnimation) { _, _ in
                 syncIdlePet()
             }
@@ -1467,11 +1474,14 @@ struct ContentView: View {
             let h = vm.effectiveClosedNotchHeight
             notchRect = CGRect(x: screen.frame.midX - w / 2, y: screen.frame.maxY - h, width: w, height: h)
         }
-        idlePet.sync(.init(enabled: idlePetWalking,
+        // The walking pet is part of the idle animation: switching "Idle
+        // Animation" off must put it away too, not only "Walking pet".
+        idlePet.sync(.init(enabled: showNotHumanFace && idlePetWalking,
                            hasAnimation: selectedIdleAnimation != nil,
                            scale: idlePetSizeScale,
                            notchRect: notchRect,
-                           notchOpen: vm.notchState == .open))
+                           notchOpen: vm.notchState == .open,
+                           menuBarOnly: idlePetMenuBarOnly))
     }
 
     @ViewBuilder
